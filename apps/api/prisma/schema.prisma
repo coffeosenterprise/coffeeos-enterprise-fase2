@@ -1,0 +1,596 @@
+// CoffeeOS Enterprise -- Esquema Prisma
+// Fase 1 v1.1: correcciones de revisión (ver Fase 1 - Documento de
+// Cierre v1.1). Ningún modelo de Catalog/Sales/Cash se agrega aquí.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// TENANT & SUBSCRIPTION MANAGEMENT
+// ============================================================
+
+model Tenant {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug         String    @unique // usado para resolver el Tenant en Login (ADR-019)
+  name         String
+  plan         String    @default("starter")
+  status       String    @default("active")
+  customLimits Json?     @map("custom_limits")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+
+  featureFlags       FeatureFlag[]
+  companies          Company[]
+  users              User[]
+  roles              Role[]
+  categories         Category[]
+  products           Product[]
+  ingredients        Ingredient[]
+  inventoryStocks    InventoryStock[]
+  inventoryMovements InventoryMovement[]
+  sales              Sale[]
+  cashSessions       CashSession[]
+  emailVerifications EmailVerification[]
+
+  @@map("tenants")
+}
+
+model FeatureFlag {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  key       String
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+  @@map("feature_flags")
+}
+
+// ============================================================
+// ORGANIZATION MANAGEMENT
+// ============================================================
+
+model Company {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  name          String
+  taxId         String?   @map("tax_id")
+  currency      String    @default("MXN")
+  timezone      String    @default("America/Mexico_City")
+  baseTaxConfig Json?     @map("base_tax_config")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  branches Branch[]
+
+  @@unique([id, tenantId]) // soporta FKs compuestas desde Branch
+  @@index([tenantId])
+  @@map("companies")
+}
+
+model Branch {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  name      String
+  address   String?
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  company         Company                @relation(fields: [companyId, tenantId], references: [id, tenantId])
+  terminals       Terminal[]
+  userAssignments UserBranchAssignment[]
+  inventoryStocks InventoryStock[]
+  sales           Sale[]
+  cashSessions    CashSession[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([companyId])
+  @@map("branches")
+}
+
+model Terminal {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  branchId  String    @map("branch_id") @db.Uuid
+  name      String
+  code      String
+  status    String    @default("active")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  branch       Branch        @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  sales        Sale[]
+  cashSessions CashSession[]
+
+  @@unique([branchId, code])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("terminals")
+}
+
+model UserBranchAssignment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user   User   @relation(fields: [userId, tenantId], references: [id, tenantId])
+  branch Branch @relation(fields: [branchId, tenantId], references: [id, tenantId])
+
+  @@unique([userId, branchId])
+  @@index([tenantId])
+  @@map("user_branch_assignments")
+}
+
+// ============================================================
+// IDENTITY & ACCESS
+// ============================================================
+
+model User {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  email               String
+  passwordHash        String?   @map("password_hash")
+  firstName           String    @map("first_name")
+  lastName            String    @map("last_name")
+  status              String    @default("invited")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until") @db.Timestamptz
+  lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
+
+  tenant              Tenant                 @relation(fields: [tenantId], references: [id])
+  roles               UserRole[]
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+  branchAssignments   UserBranchAssignment[]
+  emailVerifications  EmailVerification[]
+
+  @@unique([tenantId, email])
+  @@unique([id, tenantId]) // soporta FKs compuestas (UserRole, UserBranchAssignment, Session)
+  @@index([tenantId])
+  @@map("users")
+}
+
+/// Catalogo global de permisos. No lleva tenant_id.
+model Permission {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String @unique
+  description String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  isSystem  Boolean  @default(true) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  permissions RolePermission[]
+  users       UserRole[]
+  invitations Invitation[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId]) // soporta FKs compuestas (RolePermission, UserRole, Invitation)
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model RolePermission {
+  tenantId     String @map("tenant_id") @db.Uuid
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId, tenantId], references: [id, tenantId])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+  @@index([tenantId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  roleId   String @map("role_id") @db.Uuid
+
+  user User @relation(fields: [userId, tenantId], references: [id, tenantId])
+  role Role @relation(fields: [roleId, tenantId], references: [id, tenantId])
+
+  @@id([userId, roleId])
+  @@index([tenantId])
+  @@map("user_roles")
+}
+
+model Session {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @map("refresh_token_hash")
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz
+
+  user User @relation(fields: [userId, tenantId], references: [id, tenantId])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([refreshTokenHash])
+  @@map("sessions")
+}
+
+model Invitation {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  email           String
+  roleId          String    @map("role_id") @db.Uuid
+  tokenHash       String    @map("token_hash")
+  invitedByUserId String?   @map("invited_by_user_id") @db.Uuid
+  status          String    @default("pending")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz
+  acceptedAt      DateTime? @map("accepted_at") @db.Timestamptz
+
+  role Role @relation(fields: [roleId, tenantId], references: [id, tenantId])
+
+  @@index([tenantId])
+  @@index([tokenHash])
+  @@map("invitations")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+
+  user User @relation(fields: [userId, tenantId], references: [id, tenantId])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerification {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  codeHash   String    @map("code_hash")
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId, tenantId], references: [id, tenantId])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@map("email_verifications")
+}
+
+// ============================================================
+// CATALOG
+// ============================================================
+
+model Category {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  color     String   @default("#C87B45")
+  sortOrder Int      @default(0) @map("sort_order")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  products Product[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("categories")
+}
+
+model Product {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  categoryId  String   @map("category_id") @db.Uuid
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(12, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant         Tenant              @relation(fields: [tenantId], references: [id])
+  category       Category            @relation(fields: [categoryId, tenantId], references: [id, tenantId])
+  ingredients    ProductIngredient[]
+  modifierGroups ModifierGroup[]
+  saleItems      SaleItem[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([categoryId])
+  @@map("products")
+}
+
+model ModifierGroup {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String  @map("tenant_id") @db.Uuid
+  productId     String  @map("product_id") @db.Uuid
+  name          String
+  required      Boolean @default(false)
+  minSelections Int     @default(0) @map("min_selections")
+  maxSelections Int     @default(1) @map("max_selections")
+  sortOrder     Int     @default(0) @map("sort_order")
+
+  product Product          @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  options ModifierOption[]
+
+  @@unique([id, tenantId])
+  @@unique([productId, name])
+  @@index([tenantId])
+  @@map("modifier_groups")
+}
+
+model ModifierOption {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  groupId    String  @map("group_id") @db.Uuid
+  name       String
+  priceDelta Decimal @default(0) @map("price_delta") @db.Decimal(12, 2)
+  active     Boolean @default(true)
+  sortOrder  Int     @default(0) @map("sort_order")
+
+  group             ModifierGroup              @relation(fields: [groupId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  ingredients       ModifierOptionIngredient[]
+  saleItemModifiers SaleItemModifier[]
+
+  @@unique([id, tenantId])
+  @@unique([groupId, name])
+  @@index([tenantId])
+  @@map("modifier_options")
+}
+
+model Ingredient {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  unit      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant              Tenant                     @relation(fields: [tenantId], references: [id])
+  stocks              InventoryStock[]
+  productIngredients  ProductIngredient[]
+  modifierIngredients ModifierOptionIngredient[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("ingredients")
+}
+
+model ProductIngredient {
+  tenantId     String  @map("tenant_id") @db.Uuid
+  productId    String  @map("product_id") @db.Uuid
+  ingredientId String  @map("ingredient_id") @db.Uuid
+  quantity     Decimal @db.Decimal(14, 3)
+
+  product    Product    @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId, tenantId], references: [id, tenantId])
+
+  @@id([productId, ingredientId])
+  @@index([tenantId])
+  @@map("product_ingredients")
+}
+
+model ModifierOptionIngredient {
+  tenantId         String  @map("tenant_id") @db.Uuid
+  modifierOptionId String  @map("modifier_option_id") @db.Uuid
+  ingredientId     String  @map("ingredient_id") @db.Uuid
+  quantity         Decimal @db.Decimal(14, 3)
+
+  modifierOption ModifierOption @relation(fields: [modifierOptionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  ingredient     Ingredient     @relation(fields: [ingredientId, tenantId], references: [id, tenantId])
+
+  @@id([modifierOptionId, ingredientId])
+  @@index([tenantId])
+  @@map("modifier_option_ingredients")
+}
+
+// ============================================================
+// INVENTORY
+// ============================================================
+
+model InventoryStock {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  ingredientId String   @map("ingredient_id") @db.Uuid
+  quantity     Decimal  @default(0) @db.Decimal(14, 3)
+  minQuantity  Decimal  @default(0) @map("min_quantity") @db.Decimal(14, 3)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id])
+  branch     Branch              @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  ingredient Ingredient          @relation(fields: [ingredientId, tenantId], references: [id, tenantId])
+  movements  InventoryMovement[]
+
+  @@unique([branchId, ingredientId])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([branchId])
+  @@map("inventory_stocks")
+}
+
+model InventoryMovement {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  stockId      String   @map("stock_id") @db.Uuid
+  type         String
+  quantity     Decimal  @db.Decimal(14, 3)
+  balanceAfter Decimal  @map("balance_after") @db.Decimal(14, 3)
+  referenceId  String?  @map("reference_id") @db.Uuid
+  note         String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id])
+  stock  InventoryStock @relation(fields: [stockId, tenantId], references: [id, tenantId])
+
+  @@index([tenantId])
+  @@index([stockId])
+  @@map("inventory_movements")
+}
+
+// ============================================================
+// CASH MANAGEMENT + SALES / POS
+// ============================================================
+
+model CashSession {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  branchId      String    @map("branch_id") @db.Uuid
+  terminalId    String    @map("terminal_id") @db.Uuid
+  openedById    String    @map("opened_by_id") @db.Uuid
+  closedById    String?   @map("closed_by_id") @db.Uuid
+  openingAmount Decimal   @map("opening_amount") @db.Decimal(12, 2)
+  expectedCash  Decimal?  @map("expected_cash") @db.Decimal(12, 2)
+  countedCash   Decimal?  @map("counted_cash") @db.Decimal(12, 2)
+  difference    Decimal?  @db.Decimal(12, 2)
+  salesTotal    Decimal?  @map("sales_total") @db.Decimal(12, 2)
+  saleCount     Int?      @map("sale_count")
+  status        String    @default("open")
+  openedAt      DateTime  @default(now()) @map("opened_at") @db.Timestamptz
+  closedAt      DateTime? @map("closed_at") @db.Timestamptz
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  branch   Branch   @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  terminal Terminal @relation(fields: [terminalId, tenantId], references: [id, tenantId])
+  sales    Sale[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([terminalId])
+  @@map("cash_sessions")
+}
+
+model Sale {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  branchId      String   @map("branch_id") @db.Uuid
+  terminalId    String   @map("terminal_id") @db.Uuid
+  cashSessionId String   @map("cash_session_id") @db.Uuid
+  cashierId     String   @map("cashier_id") @db.Uuid
+  folio         Int         @default(autoincrement())
+  subtotal      Decimal  @db.Decimal(12, 2)
+  total         Decimal  @db.Decimal(12, 2)
+  cashReceived  Decimal  @map("cash_received") @db.Decimal(12, 2)
+  changeAmount  Decimal  @map("change_amount") @db.Decimal(12, 2)
+  paymentMethod String   @default("cash") @map("payment_method")
+  status        String   @default("completed")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  branch      Branch      @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  terminal    Terminal    @relation(fields: [terminalId, tenantId], references: [id, tenantId])
+  cashSession CashSession @relation(fields: [cashSessionId, tenantId], references: [id, tenantId])
+  items       SaleItem[]
+
+  @@unique([tenantId, folio])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([cashSessionId])
+  @@index([createdAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  saleId      String  @map("sale_id") @db.Uuid
+  productId   String  @map("product_id") @db.Uuid
+  productName String  @map("product_name")
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  quantity    Int
+  subtotal    Decimal @db.Decimal(12, 2)
+
+  sale      Sale               @relation(fields: [saleId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  product   Product            @relation(fields: [productId, tenantId], references: [id, tenantId])
+  modifiers SaleItemModifier[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([saleId])
+  @@map("sale_items")
+}
+
+model SaleItemModifier {
+  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String  @map("tenant_id") @db.Uuid
+  saleItemId       String  @map("sale_item_id") @db.Uuid
+  modifierOptionId String  @map("modifier_option_id") @db.Uuid
+  name             String
+  priceDelta       Decimal @map("price_delta") @db.Decimal(12, 2)
+
+  saleItem       SaleItem       @relation(fields: [saleItemId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  modifierOption ModifierOption @relation(fields: [modifierOptionId, tenantId], references: [id, tenantId])
+
+  @@index([tenantId])
+  @@index([saleItemId])
+  @@map("sale_item_modifiers")
+}
+
+// ============================================================
+// AUDIT (transversal, inmutable a nivel de base de datos --
+// ver migración 0003, trigger prevent_audit_log_mutation)
+// ============================================================
+
+model AuditLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  actorId   String?  @map("actor_id") @db.Uuid
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id") @db.Uuid
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  version   Int      @default(1)
+
+  @@index([tenantId])
+  @@map("audit_log")
+}

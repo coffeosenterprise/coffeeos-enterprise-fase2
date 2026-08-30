@@ -1,0 +1,115 @@
+# CoffeeOS Enterprise — Docker Compose
+# Ambiente: Local / Development
+# Referencias: Libro 03 (infraestructura aprobada), ADR-014 (Redis), ADR-015 (Object Storage)
+#
+# Fase 1 v1.1, corrección #9: las variables de entorno de los
+# servicios en red Docker usan los NOMBRES DE SERVICIO (postgres,
+# redis, object-storage, mail-testing), no `localhost` — dentro de
+# la red de Docker Compose, `localhost` se refiere al propio
+# contenedor, no a los demás servicios. `.env.example` sigue siendo
+# correcto para cuando el API corre en el HOST (fuera de Docker) y
+# los demás servicios se exponen por puertos mapeados — por eso NO
+# se usa como `env_file` del contenedor `api`.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: coffeeos-postgres
+    environment:
+      POSTGRES_DB: coffeeos
+      POSTGRES_USER: coffeeos
+      POSTGRES_PASSWORD: coffeeos_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coffeeos -d coffeeos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: coffeeos-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  object-storage:
+    image: minio/minio:latest
+    container_name: coffeeos-object-storage
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: coffeeos
+      MINIO_ROOT_PASSWORD: coffeeos_dev_secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - objectdata:/data
+
+  mail-testing:
+    image: mailhog/mailhog:latest
+    container_name: coffeeos-mail-testing
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  api:
+    build:
+      context: ./apps/api
+    container_name: coffeeos-api
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      # Nombres de servicio Docker, NO localhost -- ver nota arriba.
+      # DATABASE_URL: rol administrador -- usado por el entrypoint para
+      # migrar y para provisionar la contraseña de coffeeos_app antes
+      # de arrancar la app (Fase 1 v1.5, correccion #4: `docker compose
+      # up -d` ya es autosuficiente en un entorno limpio, no requiere
+      # pasos manuales adicionales).
+      # APP_DATABASE_URL: rol restringido, el que usa la app en runtime (ADR-022).
+      # La contraseña NUNCA se hardcodea aqui -- se toma de la variable
+      # de entorno APP_DB_ROLE_PASSWORD del host (definila en tu propio
+      # .env local, nunca en este archivo versionado). El valor de
+      # respaldo es SOLO para conveniencia de desarrollo local.
+      DATABASE_URL: postgresql://coffeeos:coffeeos_dev@postgres:5432/coffeeos?schema=public
+      APP_DATABASE_URL: postgresql://coffeeos_app:${APP_DB_ROLE_PASSWORD:-coffeeos_app_local_dev}@postgres:5432/coffeeos?schema=public
+      APP_DB_ROLE_PASSWORD: ${APP_DB_ROLE_PASSWORD:-coffeeos_app_local_dev}
+      REDIS_URL: redis://redis:6379
+      OBJECT_STORAGE_ENDPOINT: http://object-storage:9000
+      OBJECT_STORAGE_ACCESS_KEY: coffeeos
+      OBJECT_STORAGE_SECRET_KEY: coffeeos_dev_secret
+      OBJECT_STORAGE_BUCKET: coffeeos-dev
+      SMTP_HOST: mail-testing
+      SMTP_PORT: 1025
+      # Solo válido en Local/Development -- validateEnvironmentOrExit()
+      # (ADR de la corrección #12) exige un valor real en Staging/Production.
+      JWT_SECRET: local_docker_compose_dev_secret_not_for_prod
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+    container_name: coffeeos-web
+    environment:
+      API_INTERNAL_URL: http://api:3000
+    ports:
+      - "3001:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  objectdata:

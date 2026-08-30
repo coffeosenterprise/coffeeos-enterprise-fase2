@@ -1,0 +1,19 @@
+{
+  "name": "coffeeos-enterprise",
+  "private": true,
+  "version": "0.0.1",
+  "description": "CoffeeOS Enterprise — Monorepo (Fase 1 v1.8: Identity, Tenant, Tenant Provisioning y Organization implementados)",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

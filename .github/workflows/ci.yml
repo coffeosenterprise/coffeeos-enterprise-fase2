@@ -1,0 +1,112 @@
+# CoffeeOS Enterprise — Pipeline de CI
+# Alcance: lint, typecheck, build, tests (incluye la suite HTTP/E2E
+# completa de Fase 1 contra PostgreSQL real con RLS).
+# No incluye despliegue — se activa en fases posteriores.
+#
+# Nota (Fase 1 v1.1, corrección #8, sigue vigente en v1.8): este
+# repositorio se generó sin acceso a internet, por lo que no existe
+# un package-lock.json real. Este pipeline usa `npm install` en vez
+# de `npm ci` mientras tanto. La PRIMERA vez que alguien del equipo
+# corra `npm install` localmente con acceso a internet y comitee el
+# `package-lock.json` resultante, este pipeline debe cambiarse a
+# `npm ci` — no antes. Los Dockerfile de apps/api y apps/web (Fase 1
+# v1.8) ya están preparados para ese cambio (copian
+# `package-lock.json*` antes de instalar) — falta únicamente el
+# archivo real y cambiar esa única línea en cada Dockerfile.
+#
+# apps/web-kds no aparece en la matriz: no es un workspace todavía.
+#
+# Fase 1 v1.4, corrección #3: la contraseña del rol coffeeos_app ya
+# NO vive en la migración 0004 — este pipeline la provisiona en un
+# paso explícito vía prisma/provisioning/set-app-role-password.sh,
+# igual que tendría que hacerlo cualquier otro ambiente. El valor
+# usado aquí es exclusivo de esta ejecución de CI (Postgres efímero,
+# destruido al terminar el job) — consistente con que Testing puede
+# usar credenciales de desarrollo controladas.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+jobs:
+  lint-typecheck-build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        workspace: [apps/api, apps/web]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Lint
+        run: npm run lint --workspace=${{ matrix.workspace }} --if-present
+
+      - name: Typecheck
+        run: npm run typecheck --workspace=${{ matrix.workspace }} --if-present
+
+      - name: Generar cliente de Prisma
+        if: matrix.workspace == 'apps/api'
+        run: npm run prisma:generate --workspace=apps/api
+
+      - name: Build
+        run: npm run build --workspace=${{ matrix.workspace }} --if-present
+
+  test-suite-completa:
+    runs-on: ubuntu-latest
+    needs: lint-typecheck-build
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: coffeeos_test
+          POSTGRES_USER: coffeeos
+          POSTGRES_PASSWORD: coffeeos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coffeeos -d coffeeos_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Rol administrador -- usado por prisma migrate deploy (DDL) y
+      # por el script de aprovisionamiento de contraseña.
+      DATABASE_URL: postgresql://coffeeos:coffeeos_test@localhost:5432/coffeeos_test
+      # Contraseña exclusiva de esta ejecucion de CI -- ver nota del
+      # encabezado. Idealmente vendria de un Secret del repositorio
+      # (${{ secrets.CI_APP_DB_ROLE_PASSWORD }}); se deja como valor
+      # literal aqui porque el Postgres de este job es efimero y no
+      # persiste mas alla del workflow run.
+      CI_APP_DB_ROLE_PASSWORD: ci_test_only_password_ephemeral_db
+      APP_DATABASE_URL: postgresql://coffeeos_app:ci_test_only_password_ephemeral_db@localhost:5432/coffeeos_test
+      JWT_SECRET: ci_test_secret_at_least_32_characters_long
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Instalar dependencias
+        run: npm install
+      - name: Generar cliente de Prisma
+        run: npm run prisma:generate --workspace=apps/api
+      - name: Aplicar migraciones (RLS + FKs compuestas + trigger de auditoría + rol restringido)
+        run: npm run prisma:migrate:deploy --workspace=apps/api
+      - name: Provisionar contraseña del rol de aplicación (coffeeos_app)
+        env:
+          APP_DB_ROLE_PASSWORD: ${{ env.CI_APP_DB_ROLE_PASSWORD }}
+        run: bash apps/api/prisma/provisioning/set-app-role-password.sh
+      - name: Ejecutar suite completa (unitarias + E2E HTTP + aislamiento Multi-Tenant + fault injection)
+        run: npm run test --workspace=apps/api
