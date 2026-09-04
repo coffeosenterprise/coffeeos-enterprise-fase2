@@ -12,11 +12,13 @@ import {
 } from '../application/dto/auth.dto';
 import { UserService } from '../application/user.service';
 import { JwtAuthGuard } from '../../../common/auth/jwt-auth.guard';
-import { isSensitiveEnvironment } from '../../../common/config/environment';
+import { shouldExposeDevelopmentSecrets } from '../../../common/config/environment';
 import type { AccessTokenPayload } from '../../../common/auth/jwt.types';
 import { EmailVerificationService } from '../application/email-verification.service';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
+@Throttle({ default: { limit: 30, ttl: 60_000 } })
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -67,7 +69,7 @@ export class AuthController {
       dto.tenantSlug,
       dto.email,
     );
-    if (isSensitiveEnvironment()) {
+    if (!shouldExposeDevelopmentSecrets()) {
       return { requested: true };
     }
     return result;

@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsHexColor,
@@ -8,12 +10,17 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 
 export class CreateCategoryDto {
   @IsString()
+  @MinLength(1)
+  @MaxLength(100)
   name!: string;
 
   @IsOptional()
@@ -32,6 +39,7 @@ export class RecipeIngredientDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0.001)
+  @Max(1_000_000)
   quantity!: number;
 }
 
@@ -41,15 +49,19 @@ export class CreateModifierOptionDto {
   id?: string;
 
   @IsString()
+  @MinLength(1)
+  @MaxLength(100)
   name!: string;
 
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  @Max(10_000_000)
   priceDelta!: number;
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
   @ValidateNested({ each: true })
   @Type(() => RecipeIngredientDto)
   ingredients?: RecipeIngredientDto[];
@@ -61,6 +73,8 @@ export class CreateModifierGroupDto {
   id?: string;
 
   @IsString()
+  @MinLength(1)
+  @MaxLength(100)
   name!: string;
 
   @IsOptional()
@@ -78,6 +92,8 @@ export class CreateModifierGroupDto {
   maxSelections?: number;
 
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
   @ValidateNested({ each: true })
   @Type(() => CreateModifierOptionDto)
   options!: CreateModifierOptionDto[];
@@ -88,25 +104,31 @@ export class CreateProductDto {
   categoryId!: string;
 
   @IsString()
+  @MinLength(1)
+  @MaxLength(120)
   name!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   description?: string;
 
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  @Max(10_000_000)
   price!: number;
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => RecipeIngredientDto)
   ingredients?: RecipeIngredientDto[];
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
   @ValidateNested({ each: true })
   @Type(() => CreateModifierGroupDto)
   modifierGroups?: CreateModifierGroupDto[];

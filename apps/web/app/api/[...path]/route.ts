@@ -19,6 +19,10 @@ async function proxy(request: NextRequest, context: RouteContext) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
+  const clientIp =
+    request.headers.get('cf-connecting-ip') ??
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  if (clientIp) headers.set('x-forwarded-for', clientIp);
 
   const response = await fetch(target, {
     method: request.method,

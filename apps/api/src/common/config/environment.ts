@@ -9,6 +9,13 @@ export function isSensitiveEnvironment(): boolean {
   return NON_LOCAL_ENVIRONMENTS.includes(env);
 }
 
+export function shouldExposeDevelopmentSecrets(): boolean {
+  return (
+    !isSensitiveEnvironment() &&
+    process.env.EXPOSE_DEVELOPMENT_SECRETS === 'true'
+  );
+}
+
 /**
  * Valida configuracion critica al arrancar. Si falta algo
  * indispensable en Staging/Production, el proceso NO debe arrancar

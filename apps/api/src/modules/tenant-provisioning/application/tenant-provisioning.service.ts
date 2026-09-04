@@ -11,7 +11,7 @@ import {
   generateVerificationCode,
   hashVerificationCode,
 } from '../../../common/security/verification-code';
-import { isSensitiveEnvironment } from '../../../common/config/environment';
+import { shouldExposeDevelopmentSecrets } from '../../../common/config/environment';
 
 export const PROVISIONING_CHECKPOINT_AFTER_FIRST_AUDIT_LOG =
   'tenant-provisioning:after-first-audit-log';
@@ -214,7 +214,7 @@ export class TenantProvisioningService {
         tenantId: result.tenantId,
         slug: result.slug,
         verificationRequired,
-        ...(verificationRequired && !isSensitiveEnvironment()
+        ...(verificationRequired && shouldExposeDevelopmentSecrets()
           ? { developmentCode: verificationCode }
           : {}),
       };

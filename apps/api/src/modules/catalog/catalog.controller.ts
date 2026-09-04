@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -47,5 +48,11 @@ export class CatalogController {
     @Body() dto: UpdateProductDto,
   ) {
     return this.catalogService.updateProduct(productId, dto);
+  }
+
+  @Delete('products/:productId')
+  @RequirePermissions('catalog.manage')
+  removeProduct(@Param('productId') productId: string) {
+    return this.catalogService.removeProduct(productId);
   }
 }

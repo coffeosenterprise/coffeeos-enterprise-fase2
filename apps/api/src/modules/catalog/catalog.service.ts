@@ -15,6 +15,68 @@ import type {
 export class CatalogService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private validateProductDefinition(dto: CreateProductDto) {
+    const ingredientIds = new Set<string>();
+    const baseIngredientIds = new Set<string>();
+
+    for (const ingredient of dto.ingredients ?? []) {
+      if (baseIngredientIds.has(ingredient.ingredientId)) {
+        throw new BadRequestException(
+          'La receta base no puede repetir el mismo ingrediente',
+        );
+      }
+      baseIngredientIds.add(ingredient.ingredientId);
+      ingredientIds.add(ingredient.ingredientId);
+    }
+
+    const groupNames = new Set<string>();
+    for (const group of dto.modifierGroups ?? []) {
+      const normalizedGroupName = group.name.trim().toLocaleLowerCase('es');
+      if (groupNames.has(normalizedGroupName)) {
+        throw new BadRequestException(
+          `El grupo de opciones "${group.name}" esta repetido`,
+        );
+      }
+      groupNames.add(normalizedGroupName);
+
+      const min = group.required
+        ? Math.max(group.minSelections ?? 1, 1)
+        : group.minSelections ?? 0;
+      const max = group.maxSelections ?? 1;
+      if (max < min || max > group.options.length) {
+        throw new BadRequestException(
+          `La configuracion del grupo "${group.name}" no es valida`,
+        );
+      }
+
+      const optionNames = new Set<string>();
+      for (const option of group.options) {
+        const normalizedOptionName = option.name
+          .trim()
+          .toLocaleLowerCase('es');
+        if (optionNames.has(normalizedOptionName)) {
+          throw new BadRequestException(
+            `La opcion "${option.name}" esta repetida en ${group.name}`,
+          );
+        }
+        optionNames.add(normalizedOptionName);
+
+        const optionIngredientIds = new Set<string>();
+        for (const ingredient of option.ingredients ?? []) {
+          if (optionIngredientIds.has(ingredient.ingredientId)) {
+            throw new BadRequestException(
+              `La opcion "${option.name}" repite un ingrediente`,
+            );
+          }
+          optionIngredientIds.add(ingredient.ingredientId);
+          ingredientIds.add(ingredient.ingredientId);
+        }
+      }
+    }
+
+    return ingredientIds;
+  }
+
   list() {
     return this.prisma.withTenantContext((tx) =>
       tx.category.findMany({
@@ -68,26 +130,7 @@ export class CatalogService {
       });
       if (!category) throw new NotFoundException('Categoria no encontrada');
 
-      const ingredientIds = new Set<string>();
-      for (const ingredient of dto.ingredients ?? []) {
-        ingredientIds.add(ingredient.ingredientId);
-      }
-      for (const group of dto.modifierGroups ?? []) {
-        const min = group.required
-          ? Math.max(group.minSelections ?? 1, 1)
-          : group.minSelections ?? 0;
-        const max = group.maxSelections ?? 1;
-        if (max < min || max > group.options.length) {
-          throw new BadRequestException(
-            `La configuracion del grupo "${group.name}" no es valida`,
-          );
-        }
-        for (const option of group.options) {
-          for (const ingredient of option.ingredients ?? []) {
-            ingredientIds.add(ingredient.ingredientId);
-          }
-        }
-      }
+      const ingredientIds = this.validateProductDefinition(dto);
 
       if (ingredientIds.size > 0) {
         const found = await tx.ingredient.count({
@@ -190,26 +233,7 @@ export class CatalogService {
       });
       if (!category) throw new NotFoundException('Categoria no encontrada');
 
-      const ingredientIds = new Set<string>();
-      for (const ingredient of dto.ingredients ?? []) {
-        ingredientIds.add(ingredient.ingredientId);
-      }
-      for (const group of dto.modifierGroups ?? []) {
-        const min = group.required
-          ? Math.max(group.minSelections ?? 1, 1)
-          : group.minSelections ?? 0;
-        const max = group.maxSelections ?? 1;
-        if (max < min || max > group.options.length) {
-          throw new BadRequestException(
-            `La configuracion del grupo "${group.name}" no es valida`,
-          );
-        }
-        for (const option of group.options) {
-          for (const ingredient of option.ingredients ?? []) {
-            ingredientIds.add(ingredient.ingredientId);
-          }
-        }
-      }
+      const ingredientIds = this.validateProductDefinition(dto);
 
       if (ingredientIds.size > 0) {
         const found = await tx.ingredient.count({
@@ -388,6 +412,26 @@ export class CatalogService {
           },
         },
       });
+    });
+  }
+
+  removeProduct(productId: string) {
+    return this.prisma.withTenantContext(async (tx) => {
+      const product = await tx.product.findFirst({
+        where: { id: productId, active: true },
+      });
+      if (!product) throw new NotFoundException('Producto no encontrado');
+
+      await tx.product.update({
+        where: { id: product.id },
+        data: { active: false },
+      });
+
+      return {
+        id: product.id,
+        name: product.name,
+        removed: true,
+      };
     });
   }
 }

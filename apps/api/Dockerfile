@@ -12,8 +12,8 @@ RUN apk add --no-cache openssl
 # No se hizo ese cambio ahora porque, sin el lockfile presente en el
 # repositorio, `npm ci` falla incondicionalmente (por diseño de npm)
 # -- eso habria dejado el Dockerfile roto en vez de listo.
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npx prisma generate
 RUN npm run build

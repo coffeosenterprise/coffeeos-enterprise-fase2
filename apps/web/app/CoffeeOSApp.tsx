@@ -203,6 +203,7 @@ export default function CoffeeOSApp() {
   const [modifierGroups, setModifierGroups] = useState([blankModifierGroup()]);
   const [editingStock, setEditingStock] = useState<Stock | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [productDraft, setProductDraft] = useState({
     categoryId: '',
     name: '',
@@ -672,6 +673,56 @@ export default function CoffeeOSApp() {
     ));
   }
 
+  function removeOption(groupIndex: number, optionIndex: number) {
+    setModifierGroups((groups) =>
+      groups.map((group, currentGroupIndex) =>
+        currentGroupIndex === groupIndex
+          ? {
+              ...group,
+              options: group.options.filter(
+                (_, currentOptionIndex) => currentOptionIndex !== optionIndex,
+              ),
+            }
+          : group,
+      ),
+    );
+  }
+
+  function productDefinitionError() {
+    const recipeIds = recipeRows
+      .filter((row) => row.ingredientId && Number(row.quantity) > 0)
+      .map((row) => row.ingredientId);
+    if (new Set(recipeIds).size !== recipeIds.length) {
+      return 'La receta base no puede repetir el mismo ingrediente.';
+    }
+
+    const activeGroups = modifierGroups.filter(
+      (group) => group.name.trim() && group.options.some((option) => option.name.trim()),
+    );
+    const groupNames = activeGroups.map((group) =>
+      group.name.trim().toLocaleLowerCase('es'),
+    );
+    if (new Set(groupNames).size !== groupNames.length) {
+      return 'No puedes repetir el nombre de un grupo de opciones.';
+    }
+
+    for (const group of activeGroups) {
+      const activeOptions = group.options.filter((option) => option.name.trim());
+      const optionNames = activeOptions.map((option) =>
+        option.name.trim().toLocaleLowerCase('es'),
+      );
+      if (new Set(optionNames).size !== optionNames.length) {
+        return `El grupo "${group.name}" tiene opciones repetidas.`;
+      }
+      const maximum = Math.max(1, Number(group.maxSelections) || 1);
+      if (maximum > activeOptions.length) {
+        return `El máximo de "${group.name}" no puede superar sus ${activeOptions.length} opciones.`;
+      }
+    }
+
+    return null;
+  }
+
   function resetProductEditor(categoryId = categoryFilter) {
     setEditingProduct(null);
     setProductDraft({
@@ -725,6 +776,11 @@ export default function CoffeeOSApp() {
 
   function submitProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const definitionError = productDefinitionError();
+    if (definitionError) {
+      setNotice({ type: 'error', text: definitionError });
+      return;
+    }
     const categoryId = productDraft.categoryId;
     const cleanRecipes = recipeRows.filter((row) => row.ingredientId && Number(row.quantity) > 0);
     const cleanGroups = modifierGroups
@@ -782,6 +838,28 @@ export default function CoffeeOSApp() {
       setCategoryFilter(categoryId);
       resetProductEditor(categoryId);
     }, editingProduct ? 'Producto y receta actualizados.' : 'Producto y receta creados.');
+  }
+
+  function confirmDeleteProduct() {
+    if (!deletingProduct) return;
+    const product = deletingProduct;
+    void run(async () => {
+      await apiRequest(`/catalog/products/${product.id}`, {
+        method: 'DELETE',
+      });
+      setCatalog((current) =>
+        current.map((category) => ({
+          ...category,
+          products: category.products.filter((item) => item.id !== product.id),
+        })),
+      );
+      setCart((current) =>
+        current.filter((line) => line.product.id !== product.id),
+      );
+      if (selectedProduct?.id === product.id) setSelectedProduct(null);
+      setDeletingProduct(null);
+      resetProductEditor();
+    }, `Producto "${product.name}" eliminado del menú.`);
   }
 
   function beginAddProduct(product: Product) {
@@ -1077,8 +1155,8 @@ export default function CoffeeOSApp() {
                   <label>Nombre<input name="name" placeholder="Crepa especial" value={productDraft.name} onChange={(event) => setProductDraft((current) => ({ ...current, name: event.target.value }))} required /></label>
                   <label>Descripción<input name="description" placeholder="Incluye una fruta, una mermelada y topping" value={productDraft.description} onChange={(event) => setProductDraft((current) => ({ ...current, description: event.target.value }))} /></label>
                   <fieldset><legend>Receta base que se descuenta por unidad</legend>{recipeRows.map((row, index) => <div className="builder-row" key={index}><select value={row.ingredientId} onChange={(event) => updateRecipe(index, 'ingredientId', event.target.value)}><option value="">Ingrediente</option>{stocks.map((stock) => <option key={stock.ingredient.id} value={stock.ingredient.id}>{stock.ingredient.name} ({stock.ingredient.unit})</option>)}</select><input type="number" step="0.001" min="0" value={row.quantity} onChange={(event) => updateRecipe(index, 'quantity', Number(event.target.value))} /><button type="button" onClick={() => setRecipeRows((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>×</button></div>)}<button type="button" className="coffee-link" onClick={() => setRecipeRows((rows) => [...rows, { ingredientId: '', quantity: 1 }])}>+ Añadir ingrediente a la receta</button></fieldset>
-                  <fieldset><legend>Opciones y extras</legend>{modifierGroups.map((group, groupIndex) => <div className="modifier-builder" key={groupIndex}><div className="builder-row group-head"><input placeholder="Grupo: Fruta, mermelada, topping…" value={group.name} onChange={(event) => updateGroup(groupIndex, 'name', event.target.value)} /><label className="check-label"><input type="checkbox" checked={group.required} onChange={(event) => updateGroup(groupIndex, 'required', event.target.checked)} />Obligatorio</label><input aria-label="Máximo" title="Máximo de opciones" type="number" min="1" value={group.maxSelections} onChange={(event) => updateGroup(groupIndex, 'maxSelections', Number(event.target.value))} /><button type="button" onClick={() => setModifierGroups((groups) => groups.filter((_, index) => index !== groupIndex))}>×</button></div>{group.options.map((option, optionIndex) => <div className="option-row" key={optionIndex}><input placeholder="Opción: Nutella o plátano extra" value={option.name} onChange={(event) => updateOption(groupIndex, optionIndex, 'name', event.target.value)} /><input aria-label="Precio extra" type="number" step="0.01" min="0" placeholder="+ precio" value={option.priceDelta} onChange={(event) => updateOption(groupIndex, optionIndex, 'priceDelta', Number(event.target.value))} /><select value={option.ingredientId} onChange={(event) => updateOption(groupIndex, optionIndex, 'ingredientId', event.target.value)}><option value="">Sin consumo extra</option>{stocks.map((stock) => <option key={stock.ingredient.id} value={stock.ingredient.id}>{stock.ingredient.name}</option>)}</select><input aria-label="Consumo" type="number" step="0.001" min="0" value={option.quantity} onChange={(event) => updateOption(groupIndex, optionIndex, 'quantity', Number(event.target.value))} /></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => groups.map((item, index) => index === groupIndex ? { ...item, options: [...item.options, { name: '', priceDelta: 0, ingredientId: '', quantity: 0 }] } : item))}>+ Añadir opción</button></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => [...groups, blankModifierGroup()])}>+ Añadir grupo de opciones</button></fieldset>
-                  <button className="coffee-primary" disabled={busy || catalog.length === 0}>{editingProduct ? 'Guardar cambios de producto y receta' : 'Guardar producto'}</button>
+                  <fieldset><legend>Opciones y extras</legend><p className="field-help">Cada opción puede sumar precio y consumir un ingrediente. El máximo indica cuántas opciones puede elegir el cliente.</p>{modifierGroups.map((group, groupIndex) => <div className="modifier-builder" key={groupIndex}><div className="builder-row group-head"><input placeholder="Grupo: Fruta, mermelada, topping…" value={group.name} onChange={(event) => updateGroup(groupIndex, 'name', event.target.value)} /><label className="check-label"><input type="checkbox" checked={group.required} onChange={(event) => updateGroup(groupIndex, 'required', event.target.checked)} />Obligatorio</label><input aria-label="Máximo" title="Cantidad máxima que puede elegir el cliente" type="number" min="1" value={group.maxSelections} onChange={(event) => updateGroup(groupIndex, 'maxSelections', Number(event.target.value))} /><button type="button" title="Eliminar grupo" onClick={() => setModifierGroups((groups) => groups.filter((_, index) => index !== groupIndex))}>×</button></div>{group.options.map((option, optionIndex) => <div className="option-row" key={option.id ?? optionIndex}><input placeholder="Opción: Nutella o plátano extra" value={option.name} onChange={(event) => updateOption(groupIndex, optionIndex, 'name', event.target.value)} /><input aria-label="Precio extra" type="number" step="0.01" min="0" placeholder="+ precio" value={option.priceDelta} onChange={(event) => updateOption(groupIndex, optionIndex, 'priceDelta', Number(event.target.value))} /><select value={option.ingredientId} onChange={(event) => updateOption(groupIndex, optionIndex, 'ingredientId', event.target.value)}><option value="">Sin consumo extra</option>{stocks.map((stock) => <option key={stock.ingredient.id} value={stock.ingredient.id}>{stock.ingredient.name} ({stock.ingredient.unit})</option>)}</select><input aria-label="Consumo" title="Cantidad que se descontará del inventario" type="number" step="0.001" min="0" value={option.quantity} onChange={(event) => updateOption(groupIndex, optionIndex, 'quantity', Number(event.target.value))} /><button type="button" className="remove-option" title={`Eliminar opción ${option.name || ''}`} onClick={() => removeOption(groupIndex, optionIndex)}>×</button></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => groups.map((item, index) => index === groupIndex ? { ...item, options: [...item.options, { name: '', priceDelta: 0, ingredientId: '', quantity: 0 }] } : item))}>+ Añadir opción</button></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => [...groups, blankModifierGroup()])}>+ Añadir grupo de opciones</button></fieldset>
+                  <div className="product-actions"><button className="coffee-primary" disabled={busy || catalog.length === 0}>{editingProduct ? 'Guardar cambios de producto y receta' : 'Guardar producto'}</button>{editingProduct && <button type="button" className="delete-product-button" disabled={busy} onClick={() => setDeletingProduct(editingProduct)}>Eliminar producto</button>}</div>
                 </form>
               </div>
             </div>
@@ -1122,6 +1200,8 @@ export default function CoffeeOSApp() {
           )}
         </div>
       </section>
+
+      {deletingProduct && <div className="modal-backdrop"><div className="confirmation-modal"><small>CONFIRMAR ELIMINACIÓN</small><h2>¿Quieres eliminar “{deletingProduct.name}”?</h2><p>El producto desaparecerá del menú y del punto de venta. Las ventas y tickets anteriores se conservarán.</p><div><button type="button" className="coffee-link" disabled={busy} onClick={() => setDeletingProduct(null)}>Cancelar</button><button type="button" className="danger-button" disabled={busy} onClick={confirmDeleteProduct}>{busy ? 'Eliminando…' : 'Aceptar y eliminar'}</button></div></div></div>}
 
       {editingStock && <div className="modal-backdrop"><form className="modifier-modal coffee-form" onSubmit={submitIngredientEdit}><button type="button" className="modal-close" onClick={() => setEditingStock(null)}>×</button><small>EDITAR INVENTARIO</small><h2>{editingStock.ingredient.name}</h2><p>Puedes corregir el nombre, la unidad, la existencia actual y el nivel de aviso.</p><label>Nombre<input name="name" defaultValue={editingStock.ingredient.name} required /></label><label>Unidad<select name="unit" defaultValue={editingStock.ingredient.unit}><option value="pieza">pieza</option><option value="g">gramos (g)</option><option value="kg">kilogramos (kg)</option><option value="ml">mililitros (ml)</option><option value="l">litros (l)</option></select></label><div className="form-row"><label>Existencia actual<input name="quantity" type="number" step="0.001" min="0" defaultValue={Number(editingStock.quantity)} required /></label><label>Avisar al llegar a<input name="minQuantity" type="number" step="0.001" min="0" defaultValue={Number(editingStock.minQuantity)} required /></label></div><button className="coffee-primary" disabled={busy}>Guardar cambios del ingrediente</button></form></div>}
 

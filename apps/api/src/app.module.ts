@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { TenantContextInterceptor } from './common/tenant/tenant-context.interceptor';
 import { DatabaseModule } from './common/database/database.module';
@@ -44,6 +45,12 @@ import { ReportingModule } from './modules/reporting/reporting.module';
 @Module({
   imports: [
     DatabaseModule,
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60_000,
+        limit: 300,
+      },
+    ]),
     HealthModule,
     ObservabilityModule,
     AuditModule,
@@ -66,6 +73,10 @@ import { ReportingModule } from './modules/reporting/reporting.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: TenantContextInterceptor,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

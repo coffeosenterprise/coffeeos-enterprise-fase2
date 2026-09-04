@@ -1,10 +1,12 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsInt,
   IsNumber,
   IsUUID,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -16,9 +18,11 @@ export class SaleItemDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(1_000)
   quantity!: number;
 
   @IsArray()
+  @ArrayMaxSize(50)
   @IsUUID('4', { each: true })
   modifierOptionIds!: string[];
 }
@@ -35,6 +39,7 @@ export class CreateSaleDto {
 
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => SaleItemDto)
   items!: SaleItemDto[];
@@ -42,5 +47,6 @@ export class CreateSaleDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  @Max(1_000_000_000)
   cashReceived!: number;
 }

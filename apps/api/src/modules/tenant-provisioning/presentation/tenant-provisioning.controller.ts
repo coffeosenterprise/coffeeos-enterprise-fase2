@@ -1,8 +1,10 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { TenantProvisioningService } from '../application/tenant-provisioning.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('tenants')
+@Throttle({ default: { limit: 5, ttl: 60_000 } })
 export class TenantProvisioningController {
   constructor(private readonly provisioningService: TenantProvisioningService) {}
 

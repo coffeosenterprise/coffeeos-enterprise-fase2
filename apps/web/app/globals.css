@@ -339,8 +339,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
 .group-head { grid-template-columns: minmax(220px, 1fr) 135px 75px 34px; }
 .check-label { display: flex; align-items: center; gap: 7px; }
 .check-label input { width: 17px; min-height: 17px; }
-.option-row { display: grid; grid-template-columns: 1.2fr 100px 1fr 90px; gap: 8px; }
+.option-row { display: grid; grid-template-columns: 1.2fr 100px 1fr 90px 34px; gap: 8px; }
 .builder-row input, .builder-row select, .option-row input, .option-row select { min-height: 40px; font-size: 11px; }
+.option-row .remove-option { border: 0; border-radius: 8px; color: #945048; background: #f7e9e6; font-size: 18px; }
+.field-help { margin: -3px 0 4px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.product-actions { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.delete-product-button { padding: 0 18px; border: 1px solid #d7a7a1; border-radius: 10px; color: #963f36; background: #fff8f7; font-weight: 700; }
+.confirmation-modal { width: min(100%, 480px); padding: 28px; border-radius: 17px; background: #fff; box-shadow: 0 30px 80px rgba(0,0,0,.25); }
+.confirmation-modal small { color: var(--copper); font-size: 10px; font-weight: 700; letter-spacing: 1.7px; }
+.confirmation-modal h2 { margin: 9px 0; font: 700 27px/1.2 'Manrope', sans-serif; }
+.confirmation-modal p { color: var(--muted); line-height: 1.55; }
+.confirmation-modal > div { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 
 .cash-card { max-width: 430px; margin: 30px auto; text-align: center; }
 .cash-card label { text-align: left; }

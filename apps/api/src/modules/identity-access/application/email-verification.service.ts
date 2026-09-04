@@ -15,7 +15,7 @@ import {
   verifyCodeHash,
 } from '../../../common/security/verification-code';
 import { runWithTenantContext } from '../../../common/tenant/tenant-context';
-import { isSensitiveEnvironment } from '../../../common/config/environment';
+import { shouldExposeDevelopmentSecrets } from '../../../common/config/environment';
 
 @Injectable()
 export class EmailVerificationService {
@@ -139,7 +139,7 @@ export class EmailVerificationService {
     }
     return {
       sent: true,
-      ...(!isSensitiveEnvironment() && result
+      ...(shouldExposeDevelopmentSecrets() && result
         ? { developmentCode: result.code }
         : {}),
     };
