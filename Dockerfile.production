@@ -1,0 +1,43 @@
+FROM node:20-alpine AS api-build
+WORKDIR /build/api
+RUN apk add --no-cache openssl
+COPY apps/api/package.json apps/api/package-lock.json ./
+RUN npm ci
+COPY apps/api/ ./
+RUN npx prisma generate
+RUN npm run build
+
+FROM node:20-alpine AS web-build
+WORKDIR /build/web
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci
+COPY apps/web/ ./
+RUN npm run build
+
+FROM node:20-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV API_INTERNAL_URL=http://127.0.0.1:3000
+ENV HOSTNAME=0.0.0.0
+
+RUN apk add --no-cache postgresql-client bash openssl
+
+COPY --from=api-build /build/api/dist ./api/dist
+COPY --from=api-build /build/api/node_modules ./api/node_modules
+COPY --from=api-build /build/api/package.json ./api/package.json
+COPY --from=api-build /build/api/prisma ./api/prisma
+COPY --from=api-build /build/api/docker-entrypoint.sh ./api/docker-entrypoint.sh
+
+COPY --from=web-build /build/web/.next ./web/.next
+COPY --from=web-build /build/web/node_modules ./web/node_modules
+COPY --from=web-build /build/web/package.json ./web/package.json
+COPY --from=web-build /build/web/next.config.js ./web/next.config.js
+
+COPY deployment/start-production.sh ./start-production.sh
+RUN chmod +x \
+  ./start-production.sh \
+  ./api/docker-entrypoint.sh \
+  ./api/prisma/provisioning/set-app-role-password.sh
+
+EXPOSE 10000
+CMD ["./start-production.sh"]

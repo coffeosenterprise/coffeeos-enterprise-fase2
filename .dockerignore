@@ -1,0 +1,9 @@
+.git
+.runtime
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/*.tsbuildinfo
+*.zip
+npm-debug.log*

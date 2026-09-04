@@ -3,8 +3,8 @@ FROM node:20-alpine AS base
 WORKDIR /app
 # Fase 1 v1.7, correccion #2: mismo criterio que apps/api/Dockerfile --
 # preparado para `npm ci`, pendiente del package-lock.json real.
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 
