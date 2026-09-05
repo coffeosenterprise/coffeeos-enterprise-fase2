@@ -34,6 +34,7 @@ COPY --from=web-build /build/web/package.json ./web/package.json
 COPY --from=web-build /build/web/next.config.js ./web/next.config.js
 
 COPY deployment/start-production.sh ./start-production.sh
+COPY deployment/build-app-db-url.js ./build-app-db-url.js
 RUN chmod +x \
   ./start-production.sh \
   ./api/docker-entrypoint.sh \

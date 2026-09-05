@@ -5,6 +5,12 @@ PUBLIC_PORT="${PORT:-10000}"
 API_PID=""
 WEB_PID=""
 
+if [ -z "${APP_DATABASE_URL:-}" ]; then
+  APP_DATABASE_URL="$(node /app/build-app-db-url.js)"
+  export APP_DATABASE_URL
+  echo "[production] Conexion restringida de aplicacion derivada de forma segura."
+fi
+
 cleanup() {
   if [ -n "${WEB_PID:-}" ]; then
     kill "$WEB_PID" 2>/dev/null || true
