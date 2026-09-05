@@ -17,11 +17,11 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: APP_DB_ROLE_PASSWORD
-        sync: false
+        generateValue: true
       - key: JWT_SECRET
         generateValue: true
       - key: SMTP_HOST
-        sync: false
+        value: smtp-relay.brevo.com
       - key: SMTP_PORT
         value: "2525"
       - key: SMTP_SECURE
