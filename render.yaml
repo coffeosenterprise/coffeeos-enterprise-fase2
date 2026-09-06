@@ -14,8 +14,18 @@ services:
         value: "true"
       - key: ENABLE_API_DOCS
         value: "false"
-      - key: DATABASE_URL
+      - key: DB_HOST
         sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        value: postgres
+      - key: DB_ADMIN_USER
+        sync: false
+      - key: DB_ADMIN_PASSWORD
+        sync: false
+      - key: DB_SSLMODE
+        value: require
       - key: APP_DB_ROLE_PASSWORD
         generateValue: true
       - key: JWT_SECRET

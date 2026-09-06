@@ -5,6 +5,12 @@ PUBLIC_PORT="${PORT:-10000}"
 API_PID=""
 WEB_PID=""
 
+if [ -z "${DATABASE_URL:-}" ]; then
+  DATABASE_URL="$(node /app/build-admin-db-url.js)"
+  export DATABASE_URL
+  echo "[production] Conexion administrativa construida de forma segura."
+fi
+
 if [ -z "${APP_DATABASE_URL:-}" ]; then
   APP_DATABASE_URL="$(node /app/build-app-db-url.js)"
   export APP_DATABASE_URL
