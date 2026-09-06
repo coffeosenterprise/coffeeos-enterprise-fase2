@@ -17,6 +17,16 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+if (
+  required.DB_HOST.endsWith('.pooler.supabase.com') &&
+  !required.DB_ADMIN_USER.includes('.')
+) {
+  console.error(
+    '[production] FATAL: DB_ADMIN_USER debe incluir el identificador del proyecto de Supabase, por ejemplo postgres.abcdefghijklmnop.',
+  );
+  process.exit(1);
+}
+
 const connection = new URL('postgresql://placeholder@localhost/postgres');
 connection.hostname = required.DB_HOST;
 connection.port = process.env.DB_PORT ?? '5432';
