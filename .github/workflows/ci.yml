@@ -92,6 +92,10 @@ jobs:
       APP_DATABASE_URL: postgresql://coffeeos_app:ci_test_only_password_ephemeral_db@localhost:5432/coffeeos_test
       JWT_SECRET: ci_test_secret_at_least_32_characters_long
       NODE_ENV: test
+      # La suite prueba el flujo de alta/login; el envio SMTP se prueba
+      # por separado y CI no levanta MailHog. Produccion conserva
+      # EMAIL_VERIFICATION_REQUIRED=true desde Render.
+      EMAIL_VERIFICATION_REQUIRED: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
