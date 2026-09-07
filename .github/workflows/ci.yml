@@ -49,15 +49,15 @@ jobs:
       - name: Instalar dependencias
         run: npm install
 
+      - name: Generar cliente de Prisma
+        if: matrix.workspace == 'apps/api'
+        run: npm run prisma:generate --workspace=apps/api
+
       - name: Lint
         run: npm run lint --workspace=${{ matrix.workspace }} --if-present
 
       - name: Typecheck
         run: npm run typecheck --workspace=${{ matrix.workspace }} --if-present
-
-      - name: Generar cliente de Prisma
-        if: matrix.workspace == 'apps/api'
-        run: npm run prisma:generate --workspace=apps/api
 
       - name: Build
         run: npm run build --workspace=${{ matrix.workspace }} --if-present
