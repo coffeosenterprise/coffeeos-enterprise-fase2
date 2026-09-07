@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { TenantRepository } from '../../tenant-subscription/infrastructure/tenant.repository';
 import { PasswordHasher } from '../../../common/security/password-hasher';
 import { PrismaService } from '../../../common/database/prisma.service';
@@ -65,11 +66,23 @@ export class TenantProvisioningService {
     const verificationCode = generateVerificationCode();
     const verificationRequired =
       process.env.EMAIL_VERIFICATION_REQUIRED !== 'false';
+    const tenantId = randomUUID();
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
+        // El Tenant raiz tambien puede estar protegido por RLS (por
+        // ejemplo, en Supabase). Como la politica compara el id de la
+        // fila con app.current_tenant, el UUID debe existir y el
+        // contexto debe fijarse ANTES del INSERT. set_config recibe el
+        // valor como parametro y `true` limita el ajuste a esta
+        // transaccion, evitando tanto inyeccion SQL como fugas al pool.
+        await tx.$executeRaw`
+          SELECT set_config('app.current_tenant', ${tenantId}, true)
+        `;
+
         const tenant = await tx.tenant.create({
           data: {
+            id: tenantId,
             name: input.name,
             slug: input.slug,
             plan: input.plan ?? 'starter',
@@ -80,10 +93,6 @@ export class TenantProvisioningService {
         if (!isValidUuid(tenant.id)) {
           throw new Error('Tenant creado con id invalido');
         }
-
-        await tx.$executeRawUnsafe(
-          `SET LOCAL app.current_tenant = '${tenant.id}'`,
-        );
 
         const createdRoles = await Promise.all(
           DEFAULT_SYSTEM_ROLES.map((roleName) =>
