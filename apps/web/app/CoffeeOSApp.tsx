@@ -172,7 +172,9 @@ function blankModifierGroup(): ModifierGroupDraft {
 export default function CoffeeOSApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register' | 'verify'>('login');
+  const [authMode, setAuthMode] = useState<
+    'login' | 'register' | 'recover-verification' | 'verify'
+  >('login');
   const [pendingVerification, setPendingVerification] = useState({
     tenantSlug: '',
     email: '',
@@ -445,6 +447,34 @@ export default function CoffeeOSApp() {
       });
       setAuthMode('verify');
     }, 'Negocio creado. Revisa tu correo para obtener el código.');
+  }
+
+  function handleRecoverVerification(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const tenantSlug = String(form.get('tenantSlug'))
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '-');
+    const email = String(form.get('email')).trim();
+    const password = String(form.get('password'));
+
+    void run(async () => {
+      const result = await publicRequest<{ developmentCode?: string }>(
+        '/v1/auth/email/resend',
+        {
+          method: 'POST',
+          body: JSON.stringify({ tenantSlug, email }),
+        },
+      );
+      setPendingVerification({
+        tenantSlug,
+        email,
+        password,
+        developmentCode: result.developmentCode ?? '',
+      });
+      setAuthMode('verify');
+    }, 'Código reenviado. Revisa tu correo.');
   }
 
   function handleVerify(event: FormEvent<HTMLFormElement>) {
@@ -998,6 +1028,16 @@ export default function CoffeeOSApp() {
                 <label>Correo<input name="email" type="email" required /></label>
                 <label>Contraseña<input name="password" type="password" required /></label>
                 <button className="coffee-primary" disabled={busy}>{busy ? 'Ingresando…' : 'Entrar a CoffeeOS'}</button>
+                <button
+                  type="button"
+                  className="coffee-link"
+                  onClick={() => {
+                    setNotice(null);
+                    setAuthMode('recover-verification');
+                  }}
+                >
+                  Verificar una cuenta pendiente
+                </button>
               </form>
             )}
             {authMode === 'register' && (
@@ -1010,6 +1050,29 @@ export default function CoffeeOSApp() {
                 <label className="wide">Correo<input name="email" type="email" required /></label>
                 <label className="wide">Contraseña<input name="password" type="password" minLength={8} required /></label>
                 <button className="coffee-primary wide" disabled={busy}>{busy ? 'Creando…' : 'Crear y verificar'}</button>
+              </form>
+            )}
+            {authMode === 'recover-verification' && (
+              <form className="coffee-form" onSubmit={handleRecoverVerification}>
+                <header>
+                  <small>CUENTA PENDIENTE</small>
+                  <h2>Recupera la verificación</h2>
+                  <p>Usa los mismos datos con los que creaste el negocio. Te enviaremos un código nuevo.</p>
+                </header>
+                <label>Identificador<input name="tenantSlug" placeholder="mi-negocio" required /></label>
+                <label>Correo<input name="email" type="email" required /></label>
+                <label>Contraseña<input name="password" type="password" minLength={8} required /></label>
+                <button className="coffee-primary" disabled={busy}>{busy ? 'Enviando…' : 'Enviar código nuevo'}</button>
+                <button
+                  type="button"
+                  className="coffee-link"
+                  onClick={() => {
+                    setNotice(null);
+                    setAuthMode('login');
+                  }}
+                >
+                  Volver a ingresar
+                </button>
               </form>
             )}
             {authMode === 'verify' && (
