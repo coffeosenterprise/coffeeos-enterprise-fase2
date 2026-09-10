@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import nodemailer, { type Transporter } from 'nodemailer';
 
 @Injectable()
 export class EmailService {
+  private readonly logger = new Logger(EmailService.name);
   private readonly transporter: Transporter;
 
   constructor() {
@@ -25,7 +26,7 @@ export class EmailService {
     businessName: string;
     code: string;
   }): Promise<void> {
-    await this.transporter.sendMail({
+    const result = await this.transporter.sendMail({
       from: process.env.SMTP_FROM ?? 'CoffeeOS <no-reply@coffeeos.local>',
       to: input.email,
       subject: 'Tu codigo de verificacion de CoffeeOS',
@@ -40,6 +41,28 @@ export class EmailService {
         `<p>El codigo vence en 15 minutos. Si no solicitaste esta cuenta, ignora este mensaje.</p>` +
         `</div>`,
     });
+
+    const acceptedCount = Array.isArray(result.accepted)
+      ? result.accepted.length
+      : 0;
+    const rejectedCount = Array.isArray(result.rejected)
+      ? result.rejected.length
+      : 0;
+    const response =
+      typeof result.response === 'string'
+        ? result.response.replace(/[\r\n]+/g, ' ').slice(0, 300)
+        : undefined;
+
+    this.logger.log(
+      JSON.stringify({
+        event: 'verification_email_smtp_result',
+        messageId:
+          typeof result.messageId === 'string' ? result.messageId : undefined,
+        acceptedCount,
+        rejectedCount,
+        response,
+      }),
+    );
   }
 
   private escapeHtml(value: string): string {
