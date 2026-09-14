@@ -144,4 +144,40 @@ export class EmailVerificationService {
         : {}),
     };
   }
+
+  async issueManualCode(tenantSlug: string, email: string) {
+    const tenant = await this.tenantRepository.findBySlug(tenantSlug);
+    if (!tenant) throw new BadRequestException('Cuenta pendiente no encontrada');
+
+    const result = await runWithTenantContext(
+      { tenantId: tenant.id, correlationId: randomUUID() },
+      () =>
+        this.prisma.withTenantContext(async (tx) => {
+          const user = await tx.user.findFirst({
+            where: { email, status: 'pending_verification', deletedAt: null },
+          });
+          if (!user) {
+            throw new BadRequestException('Cuenta pendiente no encontrada');
+          }
+          const code = generateVerificationCode();
+          await tx.emailVerification.create({
+            data: {
+              tenantId: tenant.id,
+              userId: user.id,
+              codeHash: hashVerificationCode(code),
+              expiresAt: new Date(Date.now() + 15 * 60_000),
+            },
+          });
+          return { code, expiresAt: new Date(Date.now() + 15 * 60_000) };
+        }),
+    );
+
+    return {
+      tenantSlug,
+      email,
+      code: result.code,
+      expiresAt: result.expiresAt.toISOString(),
+      source: 'CoffeeOS manual verification',
+    };
+  }
 }

@@ -1,4 +1,11 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from '../application/auth.service';
 import {
@@ -9,6 +16,7 @@ import {
   ChangePasswordDto,
   VerifyEmailDto,
   ResendVerificationDto,
+  ManualVerificationCodeDto,
 } from '../application/dto/auth.dto';
 import { UserService } from '../application/user.service';
 import { JwtAuthGuard } from '../../../common/auth/jwt-auth.guard';
@@ -46,6 +54,26 @@ export class AuthController {
   @Post('email/resend')
   resendVerification(@Body() dto: ResendVerificationDto) {
     return this.emailVerificationService.resend(dto.tenantSlug, dto.email);
+  }
+
+  @Post('email/manual-code')
+  manualVerificationCode(
+    @Body() dto: ManualVerificationCodeDto,
+    @Req() req: Request,
+  ) {
+    const configuredKey = process.env.MANUAL_VERIFICATION_KEY;
+    const providedKey = req.headers['x-manual-verification-key'];
+    if (
+      !configuredKey ||
+      typeof providedKey !== 'string' ||
+      providedKey !== configuredKey
+    ) {
+      throw new ForbiddenException('Acceso no autorizado');
+    }
+    return this.emailVerificationService.issueManualCode(
+      dto.tenantSlug,
+      dto.email,
+    );
   }
 
   @Post('logout')

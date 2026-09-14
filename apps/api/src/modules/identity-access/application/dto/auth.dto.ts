@@ -61,3 +61,11 @@ export class ResendVerificationDto {
   @IsEmail()
   email!: string;
 }
+
+export class ManualVerificationCodeDto {
+  @IsString()
+  tenantSlug!: string;
+
+  @IsEmail()
+  email!: string;
+}
