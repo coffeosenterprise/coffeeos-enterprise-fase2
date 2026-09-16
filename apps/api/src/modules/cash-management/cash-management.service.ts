@@ -73,8 +73,27 @@ export class CashManagementService {
         _sum: { total: true },
         _count: { id: true },
       });
+      const cashTotals = await tx.sale.aggregate({
+        where: {
+          cashSessionId: session.id,
+          status: 'completed',
+          paymentMethod: 'cash',
+        },
+        _sum: { total: true },
+      });
+      const paymentTotals = await tx.sale.groupBy({
+        by: ['paymentMethod'],
+        where: { cashSessionId: session.id, status: 'completed' },
+        _sum: { total: true },
+      });
+      const paymentAmount = (method: string) =>
+        Number(
+          paymentTotals.find((item) => item.paymentMethod === method)?._sum
+            .total ?? 0,
+        ).toFixed(2);
       const salesTotal = Number(totals._sum.total ?? 0);
-      const expectedCash = Number(session.openingAmount) + salesTotal;
+      const cashSalesTotal = Number(cashTotals._sum.total ?? 0);
+      const expectedCash = Number(session.openingAmount) + cashSalesTotal;
       const difference = dto.countedCash - expectedCash;
       if (!Number.isFinite(difference)) {
         throw new BadRequestException('El efectivo contado no es valido');
@@ -102,7 +121,13 @@ export class CashManagementService {
       const lowStock = allStocks.filter(
         (stock) => Number(stock.quantity) <= Number(stock.minQuantity),
       );
-      return { ...closed, lowStock };
+      return {
+        ...closed,
+        lowStock,
+        cashSalesTotal: paymentAmount('cash'),
+        cardSalesTotal: paymentAmount('card'),
+        transferSalesTotal: paymentAmount('transfer'),
+      };
     });
   }
 }

@@ -79,8 +79,10 @@ interface Receipt {
   id: string;
   folio: number;
   total: string;
+  subtotal: string;
   cashReceived: string;
   changeAmount: string;
+  paymentMethod: 'cash' | 'card' | 'transfer';
   createdAt: string;
   branch: Branch;
   terminal: Terminal;
@@ -93,12 +95,30 @@ interface Receipt {
     modifiers: { id: string; name: string; priceDelta: string }[];
   }[];
 }
+interface RecentSale {
+  id: string;
+  folio: number;
+  total: string;
+  paymentMethod: 'cash' | 'card' | 'transfer';
+  createdAt: string;
+  items: { quantity: number }[];
+}
+interface SalesSummary {
+  saleCount: number;
+  total: string;
+  cash: string;
+  card: string;
+  transfer: string;
+}
 interface CloseSummary {
   saleCount: number;
   salesTotal: string;
   expectedCash: string;
   countedCash: string;
   difference: string;
+  cashSalesTotal: string;
+  cardSalesTotal: string;
+  transferSalesTotal: string;
   lowStock: Stock[];
 }
 
@@ -155,6 +175,14 @@ function money(value: number | string) {
   }).format(Number(value || 0));
 }
 
+function paymentLabel(method: 'cash' | 'card' | 'transfer') {
+  return method === 'cash'
+    ? 'Efectivo'
+    : method === 'card'
+      ? 'Tarjeta'
+      : 'Transferencia';
+}
+
 function Icon({ children }: { children: React.ReactNode }) {
   return <span className="nav-icon" aria-hidden="true">{children}</span>;
 }
@@ -199,8 +227,11 @@ export default function CoffeeOSApp() {
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [cashReceived, setCashReceived] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [closeSummary, setCloseSummary] = useState<CloseSummary | null>(null);
+  const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
+  const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
   const [recipeRows, setRecipeRows] = useState<RecipeRow[]>([{ ingredientId: '', quantity: 1 }]);
   const [modifierGroups, setModifierGroups] = useState([blankModifierGroup()]);
   const [editingStock, setEditingStock] = useState<Stock | null>(null);
@@ -332,6 +363,20 @@ export default function CoffeeOSApp() {
     );
   }, [apiRequest, can, terminalId]);
 
+  const loadSales = useCallback(async () => {
+    if (!cashSession?.id || !can('sales.create')) {
+      setRecentSales([]);
+      setSalesSummary(null);
+      return;
+    }
+    const [recent, summary] = await Promise.all([
+      apiRequest<RecentSale[]>(`/sales?cashSessionId=${cashSession.id}`),
+      apiRequest<SalesSummary>(`/sales/summary?cashSessionId=${cashSession.id}`),
+    ]);
+    setRecentSales(recent);
+    setSalesSummary(summary);
+  }, [apiRequest, can, cashSession?.id]);
+
   useEffect(() => {
     if (!session) return;
     const load = window.setTimeout(() => {
@@ -391,6 +436,18 @@ export default function CoffeeOSApp() {
     }, 0);
     return () => window.clearTimeout(load);
   }, [terminalId, loadCash]);
+
+  useEffect(() => {
+    const load = window.setTimeout(() => {
+      void loadSales().catch((error) =>
+        setNotice({
+          type: 'error',
+          text: error instanceof Error ? error.message : 'No se pudieron cargar las ventas',
+        }),
+      );
+    }, 0);
+    return () => window.clearTimeout(load);
+  }, [loadSales]);
 
   async function login(tenantSlug: string, email: string, password: string) {
     const result = await publicRequest<Pick<Session, 'accessToken' | 'refreshToken'>>(
@@ -954,7 +1011,8 @@ export default function CoffeeOSApp() {
           branchId,
           terminalId,
           cashSessionId: cashSession.id,
-          cashReceived: Number(cashReceived),
+          paymentMethod,
+          cashReceived: paymentMethod === 'cash' ? Number(cashReceived) : 0,
           items: cart.map((line) => ({
             productId: line.product.id,
             quantity: line.quantity,
@@ -965,7 +1023,9 @@ export default function CoffeeOSApp() {
       setReceipt(sale);
       setCart([]);
       setCashReceived('');
+      setPaymentMethod('cash');
       await loadStocks();
+      await loadSales();
     }, 'Venta registrada correctamente.');
   }
 
@@ -1240,7 +1300,8 @@ export default function CoffeeOSApp() {
                   <form className="panel coffee-form" onSubmit={closeCash}><h3>Finalizar día</h3><p>Cuenta todo el efectivo físico antes de cerrar.</p><label>Efectivo contado<input name="countedCash" type="number" min="0" step="0.01" required /></label><button className="danger-button" disabled={busy}>Cerrar caja y ver resumen</button></form>
                 </div>
               )}
-              {closeSummary && <div className="panel close-summary"><h3>Resumen del cierre</h3><div><span><small>Ventas</small><b>{closeSummary.saleCount}</b></span><span><small>Total vendido</small><b>{money(closeSummary.salesTotal)}</b></span><span><small>Efectivo esperado</small><b>{money(closeSummary.expectedCash)}</b></span><span><small>Diferencia</small><b className={Number(closeSummary.difference) < 0 ? 'negative' : ''}>{money(closeSummary.difference)}</b></span></div><h4>Necesitas reponer</h4>{closeSummary.lowStock.length ? closeSummary.lowStock.map((stock) => <p key={stock.id}>{stock.ingredient.name}: quedan {Number(stock.quantity)} {stock.ingredient.unit}</p>) : <p>Todo el inventario está por encima de sus mínimos.</p>}</div>}
+              {closeSummary && <div className="panel close-summary"><h3>Resumen del cierre</h3><div><span><small>Ventas</small><b>{closeSummary.saleCount}</b></span><span><small>Total vendido</small><b>{money(closeSummary.salesTotal)}</b></span><span><small>Efectivo</small><b>{money(closeSummary.cashSalesTotal)}</b></span><span><small>Tarjeta</small><b>{money(closeSummary.cardSalesTotal)}</b></span><span><small>Transferencia</small><b>{money(closeSummary.transferSalesTotal)}</b></span><span><small>Efectivo esperado</small><b>{money(closeSummary.expectedCash)}</b></span><span><small>Diferencia</small><b className={Number(closeSummary.difference) < 0 ? 'negative' : ''}>{money(closeSummary.difference)}</b></span></div><h4>Necesitas reponer</h4>{closeSummary.lowStock.length ? closeSummary.lowStock.map((stock) => <p key={stock.id}>{stock.ingredient.name}: quedan {Number(stock.quantity)} {stock.ingredient.unit}</p>) : <p>Todo el inventario está por encima de sus mínimos.</p>}</div>}
+              {salesSummary && <div className="panel close-summary"><h3>Resumen de ventas</h3><div><span><small>Ventas</small><b>{salesSummary.saleCount}</b></span><span><small>Total general</small><b>{money(salesSummary.total)}</b></span><span><small>Efectivo</small><b>{money(salesSummary.cash)}</b></span><span><small>Tarjeta</small><b>{money(salesSummary.card)}</b></span><span><small>Transferencia</small><b>{money(salesSummary.transfer)}</b></span></div><h3>Ventas recientes</h3>{recentSales.length === 0 ? <p>Todavía no hay ventas en esta caja.</p> : recentSales.map((sale) => <article className="recent-sale" key={sale.id}><div><strong>Venta #{sale.folio}</strong><small>{new Date(sale.createdAt).toLocaleString('es-MX')} · {sale.items.reduce((sum, item) => sum + item.quantity, 0)} producto(s)</small></div><b>{money(sale.total)}</b><span>{paymentLabel(sale.paymentMethod)}</span></article>)}</div>}
             </div>
           )}
 
@@ -1254,10 +1315,11 @@ export default function CoffeeOSApp() {
               <aside className="cart-panel">
                 <div className="cart-title"><div><small>VENTA ACTUAL</small><h2>Nueva venta</h2></div><button onClick={() => setCart([])}>Limpiar</button></div>
                 <div className="cart-lines">{cart.map((line) => <article key={line.key}><div><strong>{line.product.name}</strong><small>{line.options.map((option) => option.name).join(', ') || 'Sin extras'}</small><span>{money(Number(line.product.price) + line.options.reduce((sum, option) => sum + Number(option.priceDelta), 0))} c/u</span></div><div className="quantity-control"><button onClick={() => setCart((lines) => lines.flatMap((item) => item.key === line.key ? item.quantity === 1 ? [] : [{ ...item, quantity: item.quantity - 1 }] : [item]))}>−</button><b>{line.quantity}</b><button onClick={() => setCart((lines) => lines.map((item) => item.key === line.key ? { ...item, quantity: item.quantity + 1 } : item))}>+</button></div></article>)}{cart.length === 0 && <div className="blank-state">Selecciona un producto para iniciar.</div>}</div>
+                <fieldset className="payment-methods"><legend>Metodo de pago</legend><div><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} /> Efectivo</label><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} /> Tarjeta</label><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'transfer'} onChange={() => setPaymentMethod('transfer')} /> Transferencia</label></div></fieldset>
                 <div className="cart-total"><span>Total</span><strong>{money(cartTotal)}</strong></div>
-                <label className="cash-input">El cliente entrega<input type="number" min="0" step="0.01" value={cashReceived} onChange={(event) => setCashReceived(event.target.value)} placeholder="$0.00" /></label>
-                <div className="change-preview"><span>Cambio</span><b>{money(Math.max(0, Number(cashReceived || 0) - cartTotal))}</b></div>
-                <button className="coffee-primary charge-button" disabled={busy || cart.length === 0 || !cashSession || Number(cashReceived) < cartTotal} onClick={charge}>{busy ? 'Procesando…' : `Cobrar ${money(cartTotal)}`}</button>
+                {paymentMethod === 'cash' && <label className="cash-input">El cliente entrega<input type="number" min="0" step="0.01" value={cashReceived} onChange={(event) => setCashReceived(event.target.value)} placeholder="$0.00" /></label>}
+                {paymentMethod === 'cash' && <div className="change-preview"><span>Cambio</span><b>{money(Math.max(0, Number(cashReceived || 0) - cartTotal))}</b></div>}
+                <button className="coffee-primary charge-button" disabled={busy || cart.length === 0 || !cashSession || (paymentMethod === 'cash' && Number(cashReceived) < cartTotal)} onClick={charge}>{busy ? 'Procesando…' : `Cobrar ${money(cartTotal)}`}</button>
               </aside>
             </div>
           )}
@@ -1280,7 +1342,7 @@ export default function CoffeeOSApp() {
         addToCart(selectedProduct, selectedOptions, selectedQuantity);
       }}>Agregar a la venta</button></div></div></div>}
 
-      {receipt && <div className="modal-backdrop"><div className="receipt-modal"><div id="print-ticket"><div className="ticket-brand">CoffeeOS</div><h2>Ticket #{receipt.folio}</h2><p>{receipt.branch.name} · {receipt.terminal.name}</p><p>{new Date(receipt.createdAt).toLocaleString('es-MX')}</p><hr />{receipt.items.map((item) => <div className="ticket-line" key={item.id}><span>{item.quantity} × {item.productName}<small>{item.modifiers.map((modifier) => modifier.name).join(', ')}</small></span><b>{money(item.subtotal)}</b></div>)}<hr /><div className="ticket-total"><span>Total</span><b>{money(receipt.total)}</b></div><div className="ticket-line"><span>Efectivo</span><b>{money(receipt.cashReceived)}</b></div><div className="ticket-line"><span>Cambio</span><b>{money(receipt.changeAmount)}</b></div><p className="ticket-thanks">Gracias por tu compra</p></div><div className="receipt-actions"><button className="coffee-primary" onClick={() => window.print()}>Imprimir ticket</button><button className="coffee-link" onClick={() => setReceipt(null)}>Nueva venta</button></div></div></div>}
+      {receipt && <div className="modal-backdrop"><div className="receipt-modal"><div id="print-ticket"><div className="ticket-brand">CoffeeOS</div><h2>Ticket #{receipt.folio}</h2><p>{receipt.branch.name} · {receipt.terminal.name}</p><p>{new Date(receipt.createdAt).toLocaleString('es-MX')}</p><hr />{receipt.items.map((item) => <div className="ticket-line" key={item.id}><span>{item.quantity} × {item.productName}<small>{item.modifiers.map((modifier) => modifier.name).join(', ')}</small></span><b>{money(item.subtotal)}</b></div>)}<hr /><div className="ticket-line"><span>Subtotal</span><b>{money(receipt.subtotal)}</b></div><div className="ticket-total"><span>Total</span><b>{money(receipt.total)}</b></div><div className="ticket-line"><span>Método de pago</span><b>{paymentLabel(receipt.paymentMethod)}</b></div>{receipt.paymentMethod === 'cash' && <><div className="ticket-line"><span>Efectivo recibido</span><b>{money(receipt.cashReceived)}</b></div><div className="ticket-line"><span>Cambio</span><b>{money(receipt.changeAmount)}</b></div></>}<p className="ticket-thanks">Gracias por tu compra</p></div><div className="receipt-actions"><button className="coffee-primary" onClick={() => window.print()}>Imprimir ticket</button><button className="coffee-link" onClick={() => setReceipt(null)}>Nueva venta</button></div></div></div>}
     </main>
   );
 }

@@ -5,6 +5,7 @@ import {
   IsArray,
   IsInt,
   IsNumber,
+  IsIn,
   IsUUID,
   Max,
   Min,
@@ -43,6 +44,9 @@ export class CreateSaleDto {
   @ValidateNested({ each: true })
   @Type(() => SaleItemDto)
   items!: SaleItemDto[];
+
+  @IsIn(['cash', 'card', 'transfer'])
+  paymentMethod!: 'cash' | 'card' | 'transfer';
 
   @Type(() => Number)
   @IsNumber()

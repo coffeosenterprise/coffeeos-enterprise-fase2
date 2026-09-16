@@ -26,6 +26,11 @@ export class SalesPosController {
     return this.salesService.recent(cashSessionId);
   }
 
+  @Get('summary')
+  summary(@Query('cashSessionId') cashSessionId: string) {
+    return this.salesService.summary(cashSessionId);
+  }
+
   @Post()
   create(
     @Req() req: Request & { user: AccessTokenPayload },

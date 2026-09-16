@@ -24,6 +24,30 @@ export class SalesPosService {
     );
   }
 
+  summary(cashSessionId: string) {
+    return this.prisma.withTenantContext(async (tx) => {
+      const sales = await tx.sale.findMany({
+        where: { cashSessionId, status: 'completed' },
+        select: { total: true, paymentMethod: true },
+      });
+      const totals = { total: 0, cash: 0, card: 0, transfer: 0 };
+      for (const sale of sales) {
+        const amount = Number(sale.total);
+        totals.total += amount;
+        if (sale.paymentMethod === 'card') totals.card += amount;
+        else if (sale.paymentMethod === 'transfer') totals.transfer += amount;
+        else totals.cash += amount;
+      }
+      return {
+        saleCount: sales.length,
+        total: totals.total.toFixed(2),
+        cash: totals.cash.toFixed(2),
+        card: totals.card.toFixed(2),
+        transfer: totals.transfer.toFixed(2),
+      };
+    });
+  }
+
   create(cashierId: string, dto: CreateSaleDto) {
     const { tenantId } = getTenantContext();
     return this.prisma.withTenantContext(async (tx) => {
@@ -135,8 +159,10 @@ export class SalesPosService {
         }
       }
 
-      const cashReceived = new Prisma.Decimal(dto.cashReceived);
-      if (cashReceived.lessThan(total)) {
+      const cashReceived = new Prisma.Decimal(
+        dto.paymentMethod === 'cash' ? dto.cashReceived : 0,
+      );
+      if (dto.paymentMethod === 'cash' && cashReceived.lessThan(total)) {
         throw new BadRequestException(
           `Efectivo insuficiente. Total: $${total.toFixed(2)}`,
         );
@@ -191,7 +217,11 @@ export class SalesPosService {
           subtotal: total,
           total,
           cashReceived,
-          changeAmount: cashReceived.minus(total),
+          changeAmount:
+            dto.paymentMethod === 'cash'
+              ? cashReceived.minus(total)
+              : new Prisma.Decimal(0),
+          paymentMethod: dto.paymentMethod,
         },
       });
 
