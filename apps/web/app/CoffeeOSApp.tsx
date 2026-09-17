@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type View = 'pos' | 'catalog' | 'inventory' | 'cash' | 'setup';
 type Notice = { type: 'success' | 'error'; text: string };
@@ -199,6 +199,9 @@ function blankModifierGroup(): ModifierGroupDraft {
 
 export default function CoffeeOSApp() {
   const [session, setSession] = useState<Session | null>(null);
+  const refreshPromise = useRef<
+    Promise<Pick<Session, 'accessToken' | 'refreshToken'>> | null
+  >(null);
   const [ready, setReady] = useState(false);
   const [authMode, setAuthMode] = useState<
     'login' | 'register' | 'recover-verification' | 'verify'
@@ -301,18 +304,41 @@ export default function CoffeeOSApp() {
       });
     let response = await send(session.accessToken);
     if (response.status === 401 && session.refreshToken) {
-      const refreshedResponse = await fetch('/api/v1/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: session.refreshToken }),
-      });
-      if (refreshedResponse.ok) {
-        const refreshed = await refreshedResponse.json() as Pick<Session, 'accessToken' | 'refreshToken'>;
+      if (!refreshPromise.current) {
+        refreshPromise.current = (async () => {
+          const refreshedResponse = await fetch('/api/v1/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: session.refreshToken }),
+          });
+          if (!refreshedResponse.ok) {
+            throw new Error('Tu sesión venció. Inicia sesión nuevamente.');
+          }
+          return refreshedResponse.json() as Promise<
+            Pick<Session, 'accessToken' | 'refreshToken'>
+          >;
+        })().finally(() => {
+          refreshPromise.current = null;
+        });
+      }
+
+      try {
+        const refreshed = await refreshPromise.current;
         persistSession({ ...session, ...refreshed });
         response = await send(refreshed.accessToken);
+      } catch {
+        // El refresh token puede expirar, revocarse o quedar invalidado
+        // después de una rotación de JWT_SECRET. Se borran únicamente los
+        // tokens locales; los datos del negocio permanecen en el servidor.
+        persistSession(null);
+        throw new Error('Tu sesión venció. Inicia sesión nuevamente.');
       }
     }
     const body = await response.json().catch(() => null);
+    if (response.status === 401) {
+      persistSession(null);
+      throw new Error('Tu sesión venció. Inicia sesión nuevamente.');
+    }
     if (!response.ok) throw new Error(messageOf(body));
     return body as T;
   }, [persistSession, session]);
