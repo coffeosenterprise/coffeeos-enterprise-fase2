@@ -207,7 +207,11 @@ model RolePermission {
   permissionId String @map("permission_id") @db.Uuid
 
   role       Role       @relation(fields: [roleId, tenantId], references: [id, tenantId])
-  permission Permission @relation(fields: [permissionId], references: [id])
+  // Puede existir una asignación histórica cuyo catálogo se haya
+  // eliminado manualmente en una base antigua. La migración 0009
+  // repara esas filas; hacer la relación opcional evita que un único
+  // registro inconsistente bloquee el inicio de sesión completo.
+  permission Permission? @relation(fields: [permissionId], references: [id])
 
   @@id([roleId, permissionId])
   @@index([tenantId])

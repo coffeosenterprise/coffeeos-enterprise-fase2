@@ -191,12 +191,16 @@ export class AuthService {
   }
 
   private extractPermissions(user: {
-    roles: { role: { permissions: { permission: { key: string } }[] } }[];
+    roles: {
+      role: { permissions: { permission: { key: string } | null }[] };
+    }[];
   }): string[] {
     const keys = new Set<string>();
     for (const userRole of user.roles) {
       for (const rp of userRole.role.permissions) {
-        keys.add(rp.permission.key);
+        if (rp.permission) {
+          keys.add(rp.permission.key);
+        }
       }
     }
     return Array.from(keys);
