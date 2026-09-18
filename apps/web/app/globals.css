@@ -407,6 +407,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
 .modifier-modal legend { width: calc(100% - 15px); display: flex; align-items: center; gap: 8px; }
 .modifier-modal legend b { padding: 3px 6px; border-radius: 10px; color: #9c4b41; background: #f6dfdc; font-size: 8px; }
 .modifier-modal legend small { margin-left: auto; color: var(--muted); }
+.payment-modal { width: min(100%, 500px); }
+.payment-methods { display: grid; gap: 10px; margin: 20px 0; padding: 16px; border: 1px solid #e0e1db; border-radius: 11px; }
+.payment-methods legend { padding: 0 7px; color: #3f4d45; font-size: 12px; font-weight: 700; }
+.payment-methods > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.payment-methods label { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 48px; padding: 8px; border: 1px solid #dfe2dc; border-radius: 10px; color: var(--muted); background: #fff; font-size: 11px; font-weight: 700; cursor: pointer; }
+.payment-methods label:has(input:checked) { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+.payment-methods input { width: 16px; min-height: 16px; }
+.payment-modal .cash-input { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.payment-actions { display: grid; grid-template-columns: auto 1fr; gap: 10px; margin-top: 18px; }
 .option-card { display: flex; grid-template-columns: none; align-items: center; gap: 11px; padding: 11px; border: 1px solid #e0e2dc; border-radius: 10px; cursor: pointer; }
 .option-card.selected { border-color: var(--green); background: var(--green-soft); }
 .option-card input { width: 18px; min-height: 18px; }
@@ -458,6 +467,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
   .coffee-form .wide { grid-column: auto; }
   .option-row, .group-head, .builder-row { grid-template-columns: 1fr; }
   .builder-row > button { min-height: 35px; }
+  .payment-methods > div { grid-template-columns: 1fr; }
   .product-grid { grid-template-columns: 1fr 1fr; }
   .product-card { min-height: 170px; }
 }

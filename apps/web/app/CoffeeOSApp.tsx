@@ -231,6 +231,7 @@ export default function CoffeeOSApp() {
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [cashReceived, setCashReceived] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
+  const [paymentOpen, setPaymentOpen] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [closeSummary, setCloseSummary] = useState<CloseSummary | null>(null);
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
@@ -401,7 +402,7 @@ export default function CoffeeOSApp() {
     ]);
     setRecentSales(recent);
     setSalesSummary(summary);
-  }, [apiRequest, can, cashSession?.id]);
+  }, [apiRequest, can, cashSession]);
 
   useEffect(() => {
     if (!session) return;
@@ -1024,6 +1025,17 @@ export default function CoffeeOSApp() {
     return sum + (Number(line.product.price) + extras) * line.quantity;
   }, 0);
 
+  function beginPayment() {
+    if (!cashSession) {
+      setNotice({ type: 'error', text: 'Primero abre la caja de esta terminal.' });
+      setView('cash');
+      return;
+    }
+    setPaymentMethod('cash');
+    setCashReceived('');
+    setPaymentOpen(true);
+  }
+
   function charge() {
     if (!cashSession) {
       setNotice({ type: 'error', text: 'Primero abre la caja de esta terminal.' });
@@ -1047,6 +1059,7 @@ export default function CoffeeOSApp() {
         }),
       });
       setReceipt(sale);
+      setPaymentOpen(false);
       setCart([]);
       setCashReceived('');
       setPaymentMethod('cash');
@@ -1341,11 +1354,8 @@ export default function CoffeeOSApp() {
               <aside className="cart-panel">
                 <div className="cart-title"><div><small>VENTA ACTUAL</small><h2>Nueva venta</h2></div><button onClick={() => setCart([])}>Limpiar</button></div>
                 <div className="cart-lines">{cart.map((line) => <article key={line.key}><div><strong>{line.product.name}</strong><small>{line.options.map((option) => option.name).join(', ') || 'Sin extras'}</small><span>{money(Number(line.product.price) + line.options.reduce((sum, option) => sum + Number(option.priceDelta), 0))} c/u</span></div><div className="quantity-control"><button onClick={() => setCart((lines) => lines.flatMap((item) => item.key === line.key ? item.quantity === 1 ? [] : [{ ...item, quantity: item.quantity - 1 }] : [item]))}>−</button><b>{line.quantity}</b><button onClick={() => setCart((lines) => lines.map((item) => item.key === line.key ? { ...item, quantity: item.quantity + 1 } : item))}>+</button></div></article>)}{cart.length === 0 && <div className="blank-state">Selecciona un producto para iniciar.</div>}</div>
-                <fieldset className="payment-methods"><legend>Metodo de pago</legend><div><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} /> Efectivo</label><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} /> Tarjeta</label><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'transfer'} onChange={() => setPaymentMethod('transfer')} /> Transferencia</label></div></fieldset>
                 <div className="cart-total"><span>Total</span><strong>{money(cartTotal)}</strong></div>
-                {paymentMethod === 'cash' && <label className="cash-input">El cliente entrega<input type="number" min="0" step="0.01" value={cashReceived} onChange={(event) => setCashReceived(event.target.value)} placeholder="$0.00" /></label>}
-                {paymentMethod === 'cash' && <div className="change-preview"><span>Cambio</span><b>{money(Math.max(0, Number(cashReceived || 0) - cartTotal))}</b></div>}
-                <button className="coffee-primary charge-button" disabled={busy || cart.length === 0 || !cashSession || (paymentMethod === 'cash' && Number(cashReceived) < cartTotal)} onClick={charge}>{busy ? 'Procesando…' : `Cobrar ${money(cartTotal)}`}</button>
+                <button className="coffee-primary charge-button" disabled={busy || cart.length === 0 || !cashSession} onClick={beginPayment}>Pagar {money(cartTotal)}</button>
               </aside>
             </div>
           )}
@@ -1367,6 +1377,8 @@ export default function CoffeeOSApp() {
         }
         addToCart(selectedProduct, selectedOptions, selectedQuantity);
       }}>Agregar a la venta</button></div></div></div>}
+
+      {paymentOpen && <div className="modal-backdrop"><div className="modifier-modal payment-modal"><button className="modal-close" disabled={busy} onClick={() => setPaymentOpen(false)}>×</button><small>FINALIZAR VENTA</small><h2>Pagar {money(cartTotal)}</h2><p>Selecciona cómo pagará el cliente.</p><fieldset className="payment-methods"><legend>Método de pago</legend><div><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} /> Efectivo</label><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} /> Tarjeta</label><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'transfer'} onChange={() => setPaymentMethod('transfer')} /> Transferencia</label></div></fieldset>{paymentMethod === 'cash' && <><label className="cash-input">Efectivo recibido<input autoFocus type="number" min="0" step="0.01" value={cashReceived} onChange={(event) => setCashReceived(event.target.value)} placeholder="$0.00" /></label><div className="change-preview"><span>Cambio</span><b>{money(Math.max(0, Number(cashReceived || 0) - cartTotal))}</b></div></>}<div className="payment-actions"><button type="button" className="coffee-link" disabled={busy} onClick={() => setPaymentOpen(false)}>Cancelar</button><button type="button" className="coffee-primary" disabled={busy || (paymentMethod === 'cash' && Number(cashReceived) < cartTotal)} onClick={charge}>{busy ? 'Procesando…' : 'Confirmar pago'}</button></div></div></div>}
 
       {receipt && <div className="modal-backdrop"><div className="receipt-modal"><div id="print-ticket"><div className="ticket-brand">CoffeeOS</div><h2>Ticket #{receipt.folio}</h2><p>{receipt.branch.name} · {receipt.terminal.name}</p><p>{new Date(receipt.createdAt).toLocaleString('es-MX')}</p><hr />{receipt.items.map((item) => <div className="ticket-line" key={item.id}><span>{item.quantity} × {item.productName}<small>{item.modifiers.map((modifier) => modifier.name).join(', ')}</small></span><b>{money(item.subtotal)}</b></div>)}<hr /><div className="ticket-line"><span>Subtotal</span><b>{money(receipt.subtotal)}</b></div><div className="ticket-total"><span>Total</span><b>{money(receipt.total)}</b></div><div className="ticket-line"><span>Método de pago</span><b>{paymentLabel(receipt.paymentMethod)}</b></div>{receipt.paymentMethod === 'cash' && <><div className="ticket-line"><span>Efectivo recibido</span><b>{money(receipt.cashReceived)}</b></div><div className="ticket-line"><span>Cambio</span><b>{money(receipt.changeAmount)}</b></div></>}<p className="ticket-thanks">Gracias por tu compra</p></div><div className="receipt-actions"><button className="coffee-primary" onClick={() => window.print()}>Imprimir ticket</button><button className="coffee-link" onClick={() => setReceipt(null)}>Nueva venta</button></div></div></div>}
     </main>
