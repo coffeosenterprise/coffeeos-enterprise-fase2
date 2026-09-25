@@ -30,6 +30,14 @@ export class CashManagementController {
     return this.cashService.current(terminalId);
   }
 
+  @Get('history')
+  history(
+    @Query('branchId') branchId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.cashService.history(branchId, limit ? Number(limit) : undefined);
+  }
+
   @Post('open')
   open(
     @Req() req: Request & { user: AccessTokenPayload },

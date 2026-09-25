@@ -164,6 +164,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   branchAssignments   UserBranchAssignment[]
   emailVerifications  EmailVerification[]
+  inventoryMovements  InventoryMovement[] @relation("InventoryMovementActor")
 
   @@unique([tenantId, email])
   @@unique([id, tenantId]) // soporta FKs compuestas (UserRole, UserBranchAssignment, Session)
@@ -468,16 +469,22 @@ model InventoryMovement {
   stockId      String   @map("stock_id") @db.Uuid
   type         String
   quantity     Decimal  @db.Decimal(14, 3)
+  balanceBefore Decimal? @map("balance_before") @db.Decimal(14, 3)
   balanceAfter Decimal  @map("balance_after") @db.Decimal(14, 3)
   referenceId  String?  @map("reference_id") @db.Uuid
+  actorId      String?  @map("actor_id") @db.Uuid
+  reason       String?
   note         String?
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   tenant Tenant         @relation(fields: [tenantId], references: [id])
   stock  InventoryStock @relation(fields: [stockId, tenantId], references: [id, tenantId])
+  actor  User?          @relation("InventoryMovementActor", fields: [actorId, tenantId], references: [id, tenantId])
 
   @@index([tenantId])
   @@index([stockId])
+  @@index([actorId])
+  @@index([createdAt])
   @@map("inventory_movements")
 }
 

@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -43,6 +44,28 @@ export class RestockDto {
   @Min(0.001)
   @Max(1_000_000_000)
   quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(250)
+  note?: string;
+}
+
+export class InventoryMovementDto {
+  @IsString()
+  @IsIn(['entrada', 'salida', 'ajuste', 'merma'])
+  type!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  @Max(1_000_000_000)
+  quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(250)
+  reason?: string;
 
   @IsOptional()
   @IsString()

@@ -28,6 +28,18 @@ interface Stock {
   minQuantity: string;
   ingredient: Ingredient;
 }
+interface InventoryMovement {
+  id: string;
+  type: string;
+  quantity: string;
+  balanceBefore?: string | null;
+  balanceAfter: string;
+  reason?: string | null;
+  note?: string | null;
+  createdAt: string;
+  stock: { ingredient: Ingredient };
+  actor?: { firstName: string; lastName: string; email: string } | null;
+}
 interface Recipe {
   ingredientId: string;
   quantity: string;
@@ -68,6 +80,14 @@ interface CashSession {
   openedAt: string;
   branch: Branch;
   terminal: Terminal;
+}
+interface ClosedCashSession extends CashSession {
+  closedAt: string;
+  expectedCash?: string | null;
+  countedCash?: string | null;
+  difference?: string | null;
+  salesTotal?: string | null;
+  saleCount?: number | null;
 }
 interface CartLine {
   key: string;
@@ -223,7 +243,9 @@ export default function CoffeeOSApp() {
   const [terminalId, setTerminalId] = useState('');
   const [catalog, setCatalog] = useState<Category[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
+  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
+  const [cashHistory, setCashHistory] = useState<ClosedCashSession[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -383,12 +405,28 @@ export default function CoffeeOSApp() {
     setStocks(await apiRequest<Stock[]>(`/inventory?branchId=${branchId}`));
   }, [apiRequest, branchId, can]);
 
+  const loadInventoryMovements = useCallback(async () => {
+    if (!branchId || !can('inventory.manage')) return;
+    setInventoryMovements(
+      await apiRequest<InventoryMovement[]>(`/inventory/movements?branchId=${branchId}`),
+    );
+  }, [apiRequest, branchId, can]);
+
   const loadCash = useCallback(async () => {
     if (!terminalId || !can('cash.manage')) return;
     setCashSession(
       await apiRequest<CashSession | null>(`/cash/current?terminalId=${terminalId}`),
     );
   }, [apiRequest, can, terminalId]);
+
+  const loadCashHistory = useCallback(async () => {
+    if (!can('cash.manage')) return;
+    setCashHistory(
+      await apiRequest<ClosedCashSession[]>(
+        `/cash/history${branchId ? `?branchId=${branchId}` : ''}`,
+      ),
+    );
+  }, [apiRequest, branchId, can]);
 
   const loadSales = useCallback(async () => {
     if (!cashSession?.id || !can('sales.create')) {
@@ -450,12 +488,13 @@ export default function CoffeeOSApp() {
           );
         }),
         loadStocks(),
+        loadInventoryMovements(),
       ]).catch((error) =>
         setNotice({ type: 'error', text: error instanceof Error ? error.message : 'No se pudieron cargar los datos' }),
       );
     }, 0);
     return () => window.clearTimeout(load);
-  }, [apiRequest, branchId, loadStocks, session]);
+  }, [apiRequest, branchId, loadInventoryMovements, loadStocks, session]);
 
   useEffect(() => {
     const load = window.setTimeout(() => {
@@ -463,6 +502,18 @@ export default function CoffeeOSApp() {
     }, 0);
     return () => window.clearTimeout(load);
   }, [terminalId, loadCash]);
+
+  useEffect(() => {
+    const load = window.setTimeout(() => {
+      void loadCashHistory().catch((error) =>
+        setNotice({
+          type: 'error',
+          text: error instanceof Error ? error.message : 'No se pudo cargar el historial de caja',
+        }),
+      );
+    }, 0);
+    return () => window.clearTimeout(load);
+  }, [loadCashHistory]);
 
   useEffect(() => {
     const load = window.setTimeout(() => {
@@ -688,7 +739,29 @@ export default function CoffeeOSApp() {
       setStocks((current) =>
         current.map((item) => (item.id === updated.id ? updated : item)),
       );
-    }, 'Existencia actualizada.');
+      await loadInventoryMovements();
+    }, 'Entrada registrada.');
+  }
+
+  function registerInventoryMovement(stock: Stock, type: 'salida' | 'ajuste') {
+    const amount = window.prompt(
+      type === 'salida'
+        ? `¿Cuánto deseas retirar de ${stock.ingredient.name} (${stock.ingredient.unit})?`
+        : `¿Cuánto deseas agregar como ajuste a ${stock.ingredient.name} (${stock.ingredient.unit})?`,
+    );
+    if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return;
+    const reason = window.prompt('Motivo del movimiento (opcional):') || undefined;
+    void run(async () => {
+      await apiRequest(`/inventory/stocks/${stock.id}/movements`, {
+        method: 'POST',
+        body: JSON.stringify({
+          type,
+          quantity: Number(amount),
+          reason,
+        }),
+      });
+      await Promise.all([loadStocks(), loadInventoryMovements()]);
+    }, type === 'salida' ? 'Salida registrada.' : 'Ajuste registrado.');
   }
 
   function submitIngredientEdit(event: FormEvent<HTMLFormElement>) {
@@ -1297,6 +1370,32 @@ export default function CoffeeOSApp() {
             </div>
           )}
 
+          {view === 'inventory' && branchId && (
+            <div className="page-stack">
+              <div className="panel table-panel">
+                <div className="panel-title"><h3>Historial de movimientos</h3><span>{inventoryMovements.length} recientes</span></div>
+                {inventoryMovements.length === 0 ? <p>No hay movimientos registrados todavía.</p> : <div className="recent-sales-list">{inventoryMovements.map((movement) => <article className="recent-sale" key={movement.id}><div><strong>{movement.stock.ingredient.name} · {movement.type}</strong><small>{new Date(movement.createdAt).toLocaleString('es-MX')} · {movement.reason || movement.note || 'Sin motivo'}</small></div><b className={Number(movement.quantity) < 0 ? 'negative' : ''}>{Number(movement.quantity) > 0 ? '+' : ''}{Number(movement.quantity).toLocaleString('es-MX')} {movement.stock.ingredient.unit}</b><span>{movement.actor ? `${movement.actor.firstName} ${movement.actor.lastName}` : 'Sistema'}</span></article>)}</div>}
+              </div>
+              <form className="panel coffee-form" onSubmit={(event) => {
+                event.preventDefault();
+                const formElement = event.currentTarget;
+                const form = new FormData(formElement);
+                const stock = stocks.find((item) => item.id === String(form.get('stockId')));
+                if (!stock) return;
+                void run(async () => {
+                  await apiRequest(`/inventory/stocks/${stock.id}/movements`, { method: 'POST', body: JSON.stringify({ type: form.get('type'), quantity: Number(form.get('quantity')), reason: form.get('reason') }) });
+                  formElement.reset();
+                  await Promise.all([loadStocks(), loadInventoryMovements()]);
+                }, 'Movimiento registrado.');
+              }}>
+                <h3>Registrar movimiento</h3>
+                <div className="form-row"><label>Ingrediente<select name="stockId" required><option value="">Selecciona</option>{stocks.map((stock) => <option key={stock.id} value={stock.id}>{stock.ingredient.name}</option>)}</select></label><label>Tipo<select name="type" defaultValue="salida"><option value="entrada">Entrada</option><option value="salida">Salida</option><option value="ajuste">Ajuste positivo</option><option value="merma">Merma</option></select></label></div>
+                <div className="form-row"><label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" required /></label><label>Motivo<input name="reason" maxLength={250} placeholder="Ej. desperdicio, reposición..." /></label></div>
+                <button className="coffee-primary compact" disabled={busy || stocks.length === 0}>Guardar movimiento</button>
+              </form>
+            </div>
+          )}
+
           {view === 'catalog' && branchId && (
             <div className="page-stack">
               <div className="intro"><div><small>MENÚ CONFIGURABLE</small><h2>Categorías, productos, recetas y extras</h2><p>El precio y el consumo de inventario se guardan en el producto. Los extras pueden sumar precio y descontar otro ingrediente.</p></div></div>
@@ -1341,6 +1440,13 @@ export default function CoffeeOSApp() {
               )}
               {closeSummary && <div className="panel close-summary"><h3>Resumen del cierre</h3><div><span><small>Ventas</small><b>{closeSummary.saleCount}</b></span><span><small>Total vendido</small><b>{money(closeSummary.salesTotal)}</b></span><span><small>Efectivo</small><b>{money(closeSummary.cashSalesTotal)}</b></span><span><small>Tarjeta</small><b>{money(closeSummary.cardSalesTotal)}</b></span><span><small>Transferencia</small><b>{money(closeSummary.transferSalesTotal)}</b></span><span><small>Efectivo esperado</small><b>{money(closeSummary.expectedCash)}</b></span><span><small>Diferencia</small><b className={Number(closeSummary.difference) < 0 ? 'negative' : ''}>{money(closeSummary.difference)}</b></span></div><h4>Necesitas reponer</h4>{closeSummary.lowStock.length ? closeSummary.lowStock.map((stock) => <p key={stock.id}>{stock.ingredient.name}: quedan {Number(stock.quantity)} {stock.ingredient.unit}</p>) : <p>Todo el inventario está por encima de sus mínimos.</p>}</div>}
               {salesSummary && <div className="panel close-summary"><h3>Resumen de ventas</h3><div><span><small>Ventas</small><b>{salesSummary.saleCount}</b></span><span><small>Total general</small><b>{money(salesSummary.total)}</b></span><span><small>Efectivo</small><b>{money(salesSummary.cash)}</b></span><span><small>Tarjeta</small><b>{money(salesSummary.card)}</b></span><span><small>Transferencia</small><b>{money(salesSummary.transfer)}</b></span></div><h3>Ventas recientes</h3>{recentSales.length === 0 ? <p>Todavía no hay ventas en esta caja.</p> : recentSales.map((sale) => <article className="recent-sale" key={sale.id}><div><strong>Venta #{sale.folio}</strong><small>{new Date(sale.createdAt).toLocaleString('es-MX')} · {sale.items.reduce((sum, item) => sum + item.quantity, 0)} producto(s)</small></div><b>{money(sale.total)}</b><span>{paymentLabel(sale.paymentMethod)}</span></article>)}</div>}
+            </div>
+          )}
+
+          {view === 'cash' && terminalId && cashHistory.length > 0 && (
+            <div className="panel close-summary">
+              <h3>Historial de cortes</h3>
+              {cashHistory.map((closed) => <article className="recent-sale" key={closed.id}><div><strong>{closed.terminal.name}</strong><small>{new Date(closed.closedAt).toLocaleString('es-MX')} · {closed.saleCount ?? 0} venta(s)</small></div><b>{money(closed.salesTotal ?? 0)}</b><span>Diferencia {money(closed.difference ?? 0)}</span></article>)}
             </div>
           )}
 

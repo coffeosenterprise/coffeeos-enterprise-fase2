@@ -28,6 +28,24 @@ export class CashManagementService {
     );
   }
 
+  history(branchId?: string, requestedLimit?: number) {
+    const limit = Math.min(Math.max(requestedLimit ?? 50, 1), 200);
+    return this.prisma.withTenantContext((tx) =>
+      tx.cashSession.findMany({
+        where: {
+          status: 'closed',
+          ...(branchId ? { branchId } : {}),
+        },
+        include: {
+          branch: true,
+          terminal: true,
+        },
+        orderBy: { closedAt: 'desc' },
+        take: limit,
+      }),
+    );
+  }
+
   open(actorId: string, dto: OpenCashSessionDto) {
     const { tenantId } = getTenantContext();
     return this.prisma.withTenantContext(async (tx) => {
