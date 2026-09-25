@@ -449,6 +449,7 @@ model InventoryStock {
   ingredientId String   @map("ingredient_id") @db.Uuid
   quantity     Decimal  @default(0) @db.Decimal(14, 3)
   minQuantity  Decimal  @default(0) @map("min_quantity") @db.Decimal(14, 3)
+  averageUnitCost Decimal @default(0) @map("average_unit_cost") @db.Decimal(14, 4)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant     Tenant              @relation(fields: [tenantId], references: [id])
@@ -471,6 +472,8 @@ model InventoryMovement {
   quantity     Decimal  @db.Decimal(14, 3)
   balanceBefore Decimal? @map("balance_before") @db.Decimal(14, 3)
   balanceAfter Decimal  @map("balance_after") @db.Decimal(14, 3)
+  unitCost     Decimal? @map("unit_cost") @db.Decimal(14, 4)
+  totalCost    Decimal? @map("total_cost") @db.Decimal(14, 4)
   referenceId  String?  @map("reference_id") @db.Uuid
   actorId      String?  @map("actor_id") @db.Uuid
   reason       String?

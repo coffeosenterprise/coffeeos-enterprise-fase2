@@ -201,7 +201,11 @@ export class SalesPosService {
             stockId: stock.id,
             type: 'sale',
             quantity: required.negated(),
+            balanceBefore: stock.quantity,
             balanceAfter: current.quantity,
+            unitCost: stock.averageUnitCost,
+            totalCost: required.mul(stock.averageUnitCost),
+            reason: 'sale',
             note: 'Consumo por venta',
           },
         });

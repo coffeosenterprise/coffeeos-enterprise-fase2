@@ -36,6 +36,13 @@ export class CreateIngredientDto {
   @Min(0)
   @Max(1_000_000_000)
   minQuantity!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1_000_000_000)
+  initialUnitCost?: number;
 }
 
 export class RestockDto {
@@ -44,6 +51,13 @@ export class RestockDto {
   @Min(0.001)
   @Max(1_000_000_000)
   quantity!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1_000_000_000)
+  unitCost?: number;
 
   @IsOptional()
   @IsString()
@@ -61,6 +75,13 @@ export class InventoryMovementDto {
   @Min(0.001)
   @Max(1_000_000_000)
   quantity!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1_000_000_000)
+  unitCost?: number;
 
   @IsOptional()
   @IsString()

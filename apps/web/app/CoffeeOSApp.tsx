@@ -26,6 +26,7 @@ interface Stock {
   id: string;
   quantity: string;
   minQuantity: string;
+  averageUnitCost: string;
   ingredient: Ingredient;
 }
 interface InventoryMovement {
@@ -36,6 +37,8 @@ interface InventoryMovement {
   balanceAfter: string;
   reason?: string | null;
   note?: string | null;
+  unitCost?: string | null;
+  totalCost?: string | null;
   createdAt: string;
   stock: { ingredient: Ingredient };
   actor?: { firstName: string; lastName: string; email: string } | null;
@@ -714,6 +717,7 @@ export default function CoffeeOSApp() {
           unit: form.get('unit'),
           quantity: Number(form.get('quantity')),
           minQuantity: Number(form.get('minQuantity')),
+          initialUnitCost: Number(form.get('initialUnitCost') || 0),
         }),
       });
       setStocks((current) =>
@@ -728,12 +732,21 @@ export default function CoffeeOSApp() {
   function restock(stock: Stock) {
     const amount = window.prompt(`¿Cuánto deseas agregar de ${stock.ingredient.name} (${stock.ingredient.unit})?`);
     if (!amount) return;
+    const unitCost = window.prompt(
+      `¿Cuál es el costo por ${stock.ingredient.unit} de esta entrada?`,
+      Number(stock.averageUnitCost || 0).toFixed(2),
+    );
+    if (unitCost === null) return;
     void run(async () => {
       const updated = await apiRequest<Stock>(
         `/inventory/stocks/${stock.id}/restock`,
         {
         method: 'POST',
-        body: JSON.stringify({ quantity: Number(amount), note: 'Reposición manual' }),
+        body: JSON.stringify({
+          quantity: Number(amount),
+          unitCost: Number(unitCost),
+          note: 'Reposición manual',
+        }),
         },
       );
       setStocks((current) =>
@@ -1353,7 +1366,8 @@ export default function CoffeeOSApp() {
                   <h3>Nuevo ingrediente</h3>
                   <label>Nombre<input name="name" placeholder="Nutella" required /></label>
                   <label>Unidad<select name="unit" defaultValue="g"><option value="pieza">pieza</option><option value="g">gramos (g)</option><option value="kg">kilogramos (kg)</option><option value="ml">mililitros (ml)</option><option value="l">litros (l)</option></select></label>
-                  <div className="form-row"><label>Cantidad inicial<input name="quantity" type="number" step="0.001" min="0" required /></label><label>Avisar al llegar a<input name="minQuantity" type="number" step="0.001" min="0" required /></label></div>
+                  <div className="form-row"><label>Cantidad inicial<input name="quantity" type="number" step="0.001" min="0" required /></label><label>Costo unitario inicial<input name="initialUnitCost" type="number" step="0.0001" min="0" defaultValue="0" required /></label></div>
+                  <label>Avisar al llegar a<input name="minQuantity" type="number" step="0.001" min="0" required /></label>
                   <button className="coffee-primary compact" disabled={busy}>Agregar al inventario</button>
                 </form>
                 <div className="panel table-panel">
@@ -1361,7 +1375,7 @@ export default function CoffeeOSApp() {
                   <div className="stock-grid">
                     {stocks.map((stock) => {
                       const isLow = Number(stock.quantity) <= Number(stock.minQuantity);
-                      return <article key={stock.id} className={isLow ? 'low' : ''}><div><strong>{stock.ingredient.name}</strong><small>{stock.ingredient.unit}</small></div><b>{Number(stock.quantity).toLocaleString('es-MX')}</b><p>Mínimo: {Number(stock.minQuantity).toLocaleString('es-MX')}</p>{isLow && <span>Reponer pronto</span>}<div className="stock-actions"><button onClick={() => restock(stock)}>+ Agregar existencia</button><button onClick={() => setEditingStock(stock)}>Editar</button></div></article>;
+                      return <article key={stock.id} className={isLow ? 'low' : ''}><div><strong>{stock.ingredient.name}</strong><small>{stock.ingredient.unit}</small></div><b>{Number(stock.quantity).toLocaleString('es-MX')}</b><p>Mínimo: {Number(stock.minQuantity).toLocaleString('es-MX')} · Costo promedio: {money(stock.averageUnitCost)}</p>{isLow && <span>Reponer pronto</span>}<div className="stock-actions"><button onClick={() => restock(stock)}>+ Agregar existencia</button><button onClick={() => setEditingStock(stock)}>Editar</button></div></article>;
                     })}
                     {stocks.length === 0 && <div className="blank-state">Todavía no hay ingredientes. Agrega el primero.</div>}
                   </div>
@@ -1374,7 +1388,7 @@ export default function CoffeeOSApp() {
             <div className="page-stack">
               <div className="panel table-panel">
                 <div className="panel-title"><h3>Historial de movimientos</h3><span>{inventoryMovements.length} recientes</span></div>
-                {inventoryMovements.length === 0 ? <p>No hay movimientos registrados todavía.</p> : <div className="recent-sales-list">{inventoryMovements.map((movement) => <article className="recent-sale" key={movement.id}><div><strong>{movement.stock.ingredient.name} · {movement.type}</strong><small>{new Date(movement.createdAt).toLocaleString('es-MX')} · {movement.reason || movement.note || 'Sin motivo'}</small></div><b className={Number(movement.quantity) < 0 ? 'negative' : ''}>{Number(movement.quantity) > 0 ? '+' : ''}{Number(movement.quantity).toLocaleString('es-MX')} {movement.stock.ingredient.unit}</b><span>{movement.actor ? `${movement.actor.firstName} ${movement.actor.lastName}` : 'Sistema'}</span></article>)}</div>}
+                {inventoryMovements.length === 0 ? <p>No hay movimientos registrados todavía.</p> : <div className="recent-sales-list">{inventoryMovements.map((movement) => <article className="recent-sale" key={movement.id}><div><strong>{movement.stock.ingredient.name} · {movement.type}</strong><small>{new Date(movement.createdAt).toLocaleString('es-MX')} · {movement.reason || movement.note || 'Sin motivo'} · Costo: {money(movement.unitCost ?? 0)}</small></div><b className={Number(movement.quantity) < 0 ? 'negative' : ''}>{Number(movement.quantity) > 0 ? '+' : ''}{Number(movement.quantity).toLocaleString('es-MX')} {movement.stock.ingredient.unit}</b><span>{movement.actor ? `${movement.actor.firstName} ${movement.actor.lastName}` : 'Sistema'}</span></article>)}</div>}
               </div>
               <form className="panel coffee-form" onSubmit={(event) => {
                 event.preventDefault();
@@ -1383,14 +1397,15 @@ export default function CoffeeOSApp() {
                 const stock = stocks.find((item) => item.id === String(form.get('stockId')));
                 if (!stock) return;
                 void run(async () => {
-                  await apiRequest(`/inventory/stocks/${stock.id}/movements`, { method: 'POST', body: JSON.stringify({ type: form.get('type'), quantity: Number(form.get('quantity')), reason: form.get('reason') }) });
+                  await apiRequest(`/inventory/stocks/${stock.id}/movements`, { method: 'POST', body: JSON.stringify({ type: form.get('type'), quantity: Number(form.get('quantity')), unitCost: Number(form.get('unitCost') || 0), reason: form.get('reason') }) });
                   formElement.reset();
                   await Promise.all([loadStocks(), loadInventoryMovements()]);
                 }, 'Movimiento registrado.');
               }}>
                 <h3>Registrar movimiento</h3>
                 <div className="form-row"><label>Ingrediente<select name="stockId" required><option value="">Selecciona</option>{stocks.map((stock) => <option key={stock.id} value={stock.id}>{stock.ingredient.name}</option>)}</select></label><label>Tipo<select name="type" defaultValue="salida"><option value="entrada">Entrada</option><option value="salida">Salida</option><option value="ajuste">Ajuste positivo</option><option value="merma">Merma</option></select></label></div>
-                <div className="form-row"><label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" required /></label><label>Motivo<input name="reason" maxLength={250} placeholder="Ej. desperdicio, reposición..." /></label></div>
+                <div className="form-row"><label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" required /></label><label>Costo unitario<input name="unitCost" type="number" min="0" step="0.0001" defaultValue="0" /></label></div>
+                <label>Motivo<input name="reason" maxLength={250} placeholder="Ej. desperdicio, reposición..." /></label>
                 <button className="coffee-primary compact" disabled={busy || stocks.length === 0}>Guardar movimiento</button>
               </form>
             </div>

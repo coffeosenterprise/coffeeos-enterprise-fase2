@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/database/prisma.service';
 import { getTenantContext } from '../../common/tenant/tenant-context';
 import type {
@@ -60,6 +61,7 @@ export class InventoryService {
           ingredientId: ingredient.id,
           quantity: dto.quantity,
           minQuantity: dto.minQuantity,
+          averageUnitCost: dto.initialUnitCost ?? 0,
         },
         include: { ingredient: true },
       });
@@ -72,6 +74,8 @@ export class InventoryService {
             quantity: dto.quantity,
             balanceBefore: 0,
             balanceAfter: dto.quantity,
+            unitCost: dto.initialUnitCost ?? 0,
+            totalCost: dto.quantity * (dto.initialUnitCost ?? 0),
             reason: 'initial',
             note: 'Existencia inicial',
           },
@@ -115,10 +119,21 @@ export class InventoryService {
       if (!stock) {
         throw new NotFoundException('Producto de inventario no encontrado');
       }
-      const previousQuantity = Number(stock.quantity);
+      const previousQuantity = new Prisma.Decimal(stock.quantity);
+      const previousCost = new Prisma.Decimal(stock.averageUnitCost);
+      const entryUnitCost = new Prisma.Decimal(dto.unitCost ?? 0);
+      const entryValue = entryUnitCost.mul(dto.quantity);
+      const existingValue = previousQuantity.mul(previousCost);
+      const nextQuantity = previousQuantity.plus(dto.quantity);
+      const nextAverageCost = nextQuantity.gt(0)
+        ? existingValue.plus(entryValue).div(nextQuantity)
+        : new Prisma.Decimal(0);
       const updated = await tx.inventoryStock.update({
         where: { id: stock.id },
-        data: { quantity: { increment: dto.quantity } },
+        data: {
+          quantity: { increment: dto.quantity },
+          averageUnitCost: nextAverageCost,
+        },
         include: { ingredient: true },
       });
       await tx.inventoryMovement.create({
@@ -129,6 +144,8 @@ export class InventoryService {
           quantity: dto.quantity,
           balanceBefore: previousQuantity,
           balanceAfter: updated.quantity,
+          unitCost: entryUnitCost,
+          totalCost: entryValue,
           actorId,
           reason: 'restock',
           note: dto.note?.trim() || 'Reposicion',
@@ -141,13 +158,12 @@ export class InventoryService {
   createMovement(stockId: string, dto: InventoryMovementDto, actorId: string) {
     const { tenantId } = getTenantContext();
     const normalizedType = dto.type.trim().toLowerCase();
-    const delta =
+    const isReduction =
       normalizedType === 'out' ||
       normalizedType === 'salida' ||
       normalizedType === 'waste' ||
-      normalizedType === 'merma'
-        ? -dto.quantity
-        : dto.quantity;
+      normalizedType === 'merma';
+    const delta = isReduction ? -dto.quantity : dto.quantity;
     return this.prisma.withTenantContext(async (tx) => {
       const stock = await tx.inventoryStock.findFirst({
         where: { id: stockId },
@@ -156,13 +172,27 @@ export class InventoryService {
       if (!stock) {
         throw new NotFoundException('Producto de inventario no encontrado');
       }
-      const nextQuantity = Number(stock.quantity) + delta;
-      if (nextQuantity < 0) {
+      const previousQuantity = new Prisma.Decimal(stock.quantity);
+      const previousCost = new Prisma.Decimal(stock.averageUnitCost);
+      const movementUnitCost = new Prisma.Decimal(dto.unitCost ?? 0);
+      const nextQuantity = previousQuantity.plus(delta);
+      if (nextQuantity.lt(0)) {
         throw new BadRequestException('La existencia no puede quedar negativa');
       }
+      const shouldRecalculateCost =
+        !isReduction && delta > 0 && (dto.unitCost ?? 0) > 0;
+      const nextAverageCost = shouldRecalculateCost
+        ? previousQuantity
+            .mul(previousCost)
+            .plus(movementUnitCost.mul(delta))
+            .div(nextQuantity)
+        : previousCost;
       const updated = await tx.inventoryStock.update({
         where: { id: stock.id },
-        data: { quantity: nextQuantity },
+        data: {
+          quantity: nextQuantity,
+          averageUnitCost: nextAverageCost,
+        },
         include: { ingredient: true },
       });
       return tx.inventoryMovement.create({
@@ -173,6 +203,8 @@ export class InventoryService {
           quantity: delta,
           balanceBefore: stock.quantity,
           balanceAfter: updated.quantity,
+          unitCost: movementUnitCost,
+          totalCost: movementUnitCost.mul(Math.abs(delta)),
           actorId,
           reason: dto.reason?.trim() || normalizedType,
           note: dto.note?.trim() || null,
