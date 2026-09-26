@@ -1,0 +1,10 @@
+ALTER TABLE sales
+  ADD COLUMN IF NOT EXISTS cost_total numeric(14,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS gross_profit numeric(14,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS gross_margin numeric(9,4) NOT NULL DEFAULT 0;
+
+ALTER TABLE sale_items
+  ADD COLUMN IF NOT EXISTS unit_cost numeric(14,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS cost_total numeric(14,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS gross_profit numeric(14,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS gross_margin numeric(9,4) NOT NULL DEFAULT 0;

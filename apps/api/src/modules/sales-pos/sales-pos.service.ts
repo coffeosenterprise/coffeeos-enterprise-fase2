@@ -28,12 +28,26 @@ export class SalesPosService {
     return this.prisma.withTenantContext(async (tx) => {
       const sales = await tx.sale.findMany({
         where: { cashSessionId, status: 'completed' },
-        select: { total: true, paymentMethod: true },
+        select: {
+          total: true,
+          paymentMethod: true,
+          costTotal: true,
+          grossProfit: true,
+        },
       });
-      const totals = { total: 0, cash: 0, card: 0, transfer: 0 };
+      const totals = {
+        total: 0,
+        costTotal: 0,
+        grossProfit: 0,
+        cash: 0,
+        card: 0,
+        transfer: 0,
+      };
       for (const sale of sales) {
         const amount = Number(sale.total);
         totals.total += amount;
+        totals.costTotal += Number(sale.costTotal);
+        totals.grossProfit += Number(sale.grossProfit);
         if (sale.paymentMethod === 'card') totals.card += amount;
         else if (sale.paymentMethod === 'transfer') totals.transfer += amount;
         else totals.cash += amount;
@@ -41,6 +55,11 @@ export class SalesPosService {
       return {
         saleCount: sales.length,
         total: totals.total.toFixed(2),
+        costTotal: totals.costTotal.toFixed(2),
+        grossProfit: totals.grossProfit.toFixed(2),
+        grossMargin: totals.total
+          ? ((totals.grossProfit / totals.total) * 100).toFixed(2)
+          : '0.00',
         cash: totals.cash.toFixed(2),
         card: totals.card.toFixed(2),
         transfer: totals.transfer.toFixed(2),
@@ -92,6 +111,10 @@ export class SalesPosService {
         options: (typeof products)[number]['modifierGroups'][number]['options'];
         unitPrice: Prisma.Decimal;
         subtotal: Prisma.Decimal;
+        unitCost: Prisma.Decimal;
+        costTotal: Prisma.Decimal;
+        grossProfit: Prisma.Decimal;
+        grossMargin: Prisma.Decimal;
       }[] = [];
 
       let total = new Prisma.Decimal(0);
@@ -134,6 +157,10 @@ export class SalesPosService {
           options: selectedOptions,
           unitPrice,
           subtotal,
+          unitCost: new Prisma.Decimal(0),
+          costTotal: new Prisma.Decimal(0),
+          grossProfit: new Prisma.Decimal(0),
+          grossMargin: new Prisma.Decimal(0),
         });
 
         const addConsumption = (
@@ -176,6 +203,7 @@ export class SalesPosService {
         include: { ingredient: true },
       });
       const stockMap = new Map(stocks.map((stock) => [stock.ingredientId, stock]));
+      let costTotal = new Prisma.Decimal(0);
       for (const [ingredientId, required] of consumption) {
         const stock = stockMap.get(ingredientId);
         if (!stock) {
@@ -211,6 +239,45 @@ export class SalesPosService {
         });
       }
 
+      for (const item of preparedItems) {
+        let itemCost = new Prisma.Decimal(0);
+        for (const recipe of item.product.ingredients) {
+          const stock = stockMap.get(recipe.ingredientId);
+          if (!stock) {
+            throw new ConflictException(
+              'Falta configurar inventario para un ingrediente de la receta',
+            );
+          }
+          itemCost = itemCost.plus(
+            recipe.quantity.mul(item.quantity).mul(stock.averageUnitCost),
+          );
+        }
+        for (const option of item.options) {
+          for (const recipe of option.ingredients) {
+            const stock = stockMap.get(recipe.ingredientId);
+            if (!stock) {
+              throw new ConflictException(
+                'Falta configurar inventario para un ingrediente del extra',
+              );
+            }
+            itemCost = itemCost.plus(
+              recipe.quantity.mul(item.quantity).mul(stock.averageUnitCost),
+            );
+          }
+        }
+        item.costTotal = itemCost;
+        item.unitCost = itemCost.div(item.quantity);
+        item.grossProfit = item.subtotal.minus(itemCost);
+        item.grossMargin = item.subtotal.isZero()
+          ? new Prisma.Decimal(0)
+          : item.grossProfit.div(item.subtotal).mul(100);
+        costTotal = costTotal.plus(itemCost);
+      }
+      const grossProfit = total.minus(costTotal);
+      const grossMargin = total.isZero()
+        ? new Prisma.Decimal(0)
+        : grossProfit.div(total).mul(100);
+
       const sale = await tx.sale.create({
         data: {
           tenantId,
@@ -220,6 +287,9 @@ export class SalesPosService {
           cashierId,
           subtotal: total,
           total,
+          costTotal,
+          grossProfit,
+          grossMargin,
           cashReceived,
           changeAmount:
             dto.paymentMethod === 'cash'
@@ -239,6 +309,10 @@ export class SalesPosService {
             unitPrice: item.unitPrice,
             quantity: item.quantity,
             subtotal: item.subtotal,
+            unitCost: item.unitCost,
+            costTotal: item.costTotal,
+            grossProfit: item.grossProfit,
+            grossMargin: item.grossMargin,
           },
         });
         if (item.options.length > 0) {
