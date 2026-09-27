@@ -1,16 +1,9 @@
 import { Module } from '@nestjs/common';
+import { ReportingController } from './reporting.controller';
+import { ReportingService } from './reporting.service';
 
-/**
- * Bounded Context: Reporting / Analytics
- * Responsabilidad: Dashboards, KPIs, reportes
- *
- * Estado: Esqueleto (Fase 0). Sin entidades, controladores, servicios
- * ni DTOs -- se implementa en la fase que le corresponda segun el
- * Libro 05 (Plan Maestro de Desarrollo).
- *
- * Este modulo existe unicamente para materializar el limite de
- * dominio en la estructura de carpetas (Clean Architecture + DDD,
- * Libro 03/04) desde el inicio del repositorio.
- */
-@Module({})
+@Module({
+  controllers: [ReportingController],
+  providers: [ReportingService],
+})
 export class ReportingModule {}

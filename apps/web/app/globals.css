@@ -363,6 +363,22 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
 .close-summary span b { font-size: 20px; }
 .negative { color: #a13f36; }
 .empty-banner { max-width: 640px; margin: 70px auto; padding: 40px; border: 1px dashed #cfd5cf; border-radius: 18px; text-align: center; background: #fff; }
+.reports-page { max-width: 1440px; }
+.report-filters { display: flex; align-items: end; gap: 9px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.report-filters label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.report-filters input { min-height: 39px; }
+.report-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.report-kpis .panel { display: grid; gap: 6px; }
+.report-kpis small { color: var(--muted); }
+.report-kpis strong { font: 700 27px 'Manrope', sans-serif; }
+.report-kpis span, .report-list small { color: var(--muted); font-size: 10px; }
+.report-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.report-table { min-width: 0; }
+.report-list { display: grid; gap: 8px; }
+.report-list article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-top: 1px solid #eee; }
+.report-list article > div, .report-list article > span { display: grid; gap: 4px; }
+.report-list article > span { text-align: right; }
+.report-list article b { color: var(--green); font-size: 14px; }
 
 .pos-layout { min-height: calc(100vh - 147px); display: grid; grid-template-columns: 1fr 355px; gap: 18px; }
 .product-area { min-width: 0; }
@@ -457,6 +473,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
   .context-selectors select { flex: 1; }
   .coffee-content { padding: 20px; }
   .inventory-layout, .catalog-layout, .pos-layout, .cash-columns { grid-template-columns: 1fr; }
+  .report-columns { grid-template-columns: 1fr; }
   .cart-panel { position: static; height: auto; min-height: 500px; }
   .three-cards { grid-template-columns: 1fr; }
 }
@@ -464,6 +481,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
 @media (max-width: 560px) {
   .coffee-auth-panel { padding: 24px 18px; }
   .coffee-form.two, .form-row, .stock-grid, .close-summary > div { grid-template-columns: 1fr; }
+  .report-kpis { grid-template-columns: 1fr 1fr; }
+  .report-filters { align-items: stretch; flex-direction: column; }
   .coffee-form .wide { grid-column: auto; }
   .option-row, .group-head, .builder-row { grid-template-columns: 1fr; }
   .builder-row > button { min-height: 35px; }

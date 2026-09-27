@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-type View = 'pos' | 'catalog' | 'inventory' | 'cash' | 'setup';
+type View = 'pos' | 'catalog' | 'inventory' | 'cash' | 'reports' | 'setup';
 type Notice = { type: 'success' | 'error'; text: string };
 
 interface Session {
@@ -139,6 +139,34 @@ interface SalesSummary {
   card: string;
   transfer: string;
 }
+interface ReportAggregate {
+  revenue: string;
+  cost: string;
+  profit: string;
+  margin: string;
+  units: number;
+}
+interface ReportsOverview {
+  period: { from: string; to: string };
+  sales: ReportAggregate & { count: number; averageTicket: string };
+  daily: (ReportAggregate & { date: string })[];
+  products: (ReportAggregate & { productId: string; name: string; category: string })[];
+  categories: (ReportAggregate & { name: string })[];
+  topProducts: (ReportAggregate & { productId: string; name: string; category: string })[];
+  lowMarginProducts: (ReportAggregate & { productId: string; name: string; category: string })[];
+  inventory: {
+    value: string;
+    trackedIngredients: number;
+    lowStock: {
+      ingredientId: string;
+      name: string;
+      quantity: string;
+      minQuantity: string;
+      unit: string;
+      averageUnitCost: string;
+    }[];
+  };
+}
 interface CloseSummary {
   saleCount: number;
   salesTotal: string;
@@ -267,6 +295,13 @@ export default function CoffeeOSApp() {
   const [closeSummary, setCloseSummary] = useState<CloseSummary | null>(null);
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
   const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
+  const [reports, setReports] = useState<ReportsOverview | null>(null);
+  const [reportFrom, setReportFrom] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 29);
+    return date.toISOString().slice(0, 10);
+  });
+  const [reportTo, setReportTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [recipeRows, setRecipeRows] = useState<RecipeRow[]>([{ ingredientId: '', quantity: 1 }]);
   const [modifierGroups, setModifierGroups] = useState([blankModifierGroup()]);
   const [editingStock, setEditingStock] = useState<Stock | null>(null);
@@ -451,6 +486,20 @@ export default function CoffeeOSApp() {
     setSalesSummary(summary);
   }, [apiRequest, can, cashSession]);
 
+  const loadReports = useCallback(async () => {
+    if (!session || !can('sales.create')) {
+      setReports(null);
+      return;
+    }
+    const params = new URLSearchParams();
+    if (reportFrom) params.set('from', reportFrom);
+    if (reportTo) params.set('to', reportTo);
+    if (branchId) params.set('branchId', branchId);
+    setReports(
+      await apiRequest<ReportsOverview>(`/reports/overview?${params.toString()}`),
+    );
+  }, [apiRequest, branchId, can, reportFrom, reportTo, session]);
+
   useEffect(() => {
     if (!session) return;
     const load = window.setTimeout(() => {
@@ -535,6 +584,19 @@ export default function CoffeeOSApp() {
     }, 0);
     return () => window.clearTimeout(load);
   }, [loadSales]);
+
+  useEffect(() => {
+    if (view !== 'reports') return;
+    const load = window.setTimeout(() => {
+      void loadReports().catch((error) =>
+        setNotice({
+          type: 'error',
+          text: error instanceof Error ? error.message : 'No se pudieron cargar los reportes',
+        }),
+      );
+    }, 0);
+    return () => window.clearTimeout(load);
+  }, [loadReports, view]);
 
   async function login(tenantSlug: string, email: string, password: string) {
     const result = await publicRequest<Pick<Session, 'accessToken' | 'refreshToken'>>(
@@ -1305,6 +1367,7 @@ export default function CoffeeOSApp() {
           {can('catalog.manage') && <button className={view === 'catalog' ? 'active' : ''} onClick={() => setView('catalog')}><Icon>☕</Icon>Menú y productos</button>}
           {can('inventory.manage') && <button className={view === 'inventory' ? 'active' : ''} onClick={() => setView('inventory')}><Icon>▤</Icon>Inventario {lowStock.length > 0 && <b>{lowStock.length}</b>}</button>}
           {can('cash.manage') && <button className={view === 'cash' ? 'active' : ''} onClick={() => setView('cash')}><Icon>$</Icon>Caja y cierre</button>}
+          {can('sales.create') && <button className={view === 'reports' ? 'active' : ''} onClick={() => setView('reports')}><Icon>▥</Icon>Reportes</button>}
           {can('organization.manage') && <button className={view === 'setup' ? 'active' : ''} onClick={() => setView('setup')}><Icon>⚙</Icon>Configuración</button>}
         </nav>
         <button className="logout-button" onClick={logout}>Cerrar sesión</button>
@@ -1312,7 +1375,7 @@ export default function CoffeeOSApp() {
 
       <section className="coffee-workspace">
         <header className="coffee-topbar">
-          <div><small>SUCURSAL Y TERMINAL</small><h1>{({ pos: 'Nueva venta', catalog: 'Menú y productos', inventory: 'Inventario', cash: 'Caja y cierre diario', setup: 'Configuración inicial' })[view]}</h1></div>
+          <div><small>SUCURSAL Y TERMINAL</small><h1>{({ pos: 'Nueva venta', catalog: 'Menú y productos', inventory: 'Inventario', cash: 'Caja y cierre diario', reports: 'Reportes y rentabilidad', setup: 'Configuración inicial' })[view]}</h1></div>
           <div className="context-selectors">
             <select value={branchId} onChange={(event) => setBranchId(event.target.value)}>
               <option value="">Sin sucursal</option>
@@ -1461,6 +1524,36 @@ export default function CoffeeOSApp() {
               )}
               {closeSummary && <div className="panel close-summary"><h3>Resumen del cierre</h3><div><span><small>Ventas</small><b>{closeSummary.saleCount}</b></span><span><small>Total vendido</small><b>{money(closeSummary.salesTotal)}</b></span><span><small>Efectivo</small><b>{money(closeSummary.cashSalesTotal)}</b></span><span><small>Tarjeta</small><b>{money(closeSummary.cardSalesTotal)}</b></span><span><small>Transferencia</small><b>{money(closeSummary.transferSalesTotal)}</b></span><span><small>Efectivo esperado</small><b>{money(closeSummary.expectedCash)}</b></span><span><small>Diferencia</small><b className={Number(closeSummary.difference) < 0 ? 'negative' : ''}>{money(closeSummary.difference)}</b></span></div><h4>Necesitas reponer</h4>{closeSummary.lowStock.length ? closeSummary.lowStock.map((stock) => <p key={stock.id}>{stock.ingredient.name}: quedan {Number(stock.quantity)} {stock.ingredient.unit}</p>) : <p>Todo el inventario está por encima de sus mínimos.</p>}</div>}
               {salesSummary && <div className="panel close-summary"><h3>Resumen de ventas</h3><div><span><small>Ventas</small><b>{salesSummary.saleCount}</b></span><span><small>Total general</small><b>{money(salesSummary.total)}</b></span><span><small>Costo</small><b>{money(salesSummary.costTotal)}</b></span><span><small>Utilidad bruta</small><b>{money(salesSummary.grossProfit)}</b></span><span><small>Margen</small><b>{Number(salesSummary.grossMargin).toFixed(2)}%</b></span><span><small>Efectivo</small><b>{money(salesSummary.cash)}</b></span><span><small>Tarjeta</small><b>{money(salesSummary.card)}</b></span><span><small>Transferencia</small><b>{money(salesSummary.transfer)}</b></span></div><h3>Ventas recientes</h3>{recentSales.length === 0 ? <p>Todavía no hay ventas en esta caja.</p> : recentSales.map((sale) => <article className="recent-sale" key={sale.id}><div><strong>Venta #{sale.folio}</strong><small>{new Date(sale.createdAt).toLocaleString('es-MX')} · {sale.items.reduce((sum, item) => sum + item.quantity, 0)} producto(s) · utilidad {money(sale.grossProfit)} ({Number(sale.grossMargin).toFixed(2)}%)</small></div><b>{money(sale.total)}</b><span>{paymentLabel(sale.paymentMethod)}</span></article>)}</div>}
+            </div>
+          )}
+
+          {view === 'reports' && (
+            <div className="page-stack reports-page">
+              <div className="intro">
+                <div><small>ANÁLISIS DEL NEGOCIO</small><h2>Ventas, costos y utilidad</h2><p>Consulta el desempeño de tu negocio usando los costos congelados en cada venta.</p></div>
+                <form className="report-filters" onSubmit={(event) => { event.preventDefault(); void run(loadReports, 'Reporte actualizado.'); }}>
+                  <label>Desde<input type="date" value={reportFrom} onChange={(event) => setReportFrom(event.target.value)} /></label>
+                  <label>Hasta<input type="date" value={reportTo} onChange={(event) => setReportTo(event.target.value)} /></label>
+                  <button className="coffee-primary compact" disabled={busy}>Actualizar</button>
+                </form>
+              </div>
+              {!reports ? <div className="panel empty-banner">Selecciona un periodo y actualiza para cargar el reporte.</div> : <>
+                <div className="report-kpis">
+                  <div className="panel"><small>Ventas</small><strong>{reports!.sales.count}</strong><span>{reports!.sales.units} productos vendidos</span></div>
+                  <div className="panel"><small>Ingresos</small><strong>{money(reports!.sales.revenue)}</strong><span>Ticket promedio {money(reports!.sales.averageTicket)}</span></div>
+                  <div className="panel"><small>Costo</small><strong>{money(reports!.sales.cost)}</strong><span>Inventario actual {money(reports!.inventory.value)}</span></div>
+                  <div className="panel"><small>Utilidad bruta</small><strong>{money(reports!.sales.profit)}</strong><span>Margen {Number(reports!.sales.margin).toFixed(2)}%</span></div>
+                </div>
+                <div className="report-columns">
+                  <section className="panel report-table"><div className="panel-title"><h3>Productos más rentables</h3><span>{reports!.topProducts.length} productos</span></div>{reports!.topProducts.length === 0 ? <p>No hay ventas en este periodo.</p> : <div className="report-list">{reports!.topProducts.map((product) => <article key={product.productId}><div><strong>{product.name}</strong><small>{product.category} · {product.units} vendidos</small></div><span><b>{money(product.profit)}</b><small>{Number(product.margin).toFixed(2)}% margen</small></span></article>)}</div>}</section>
+                  <section className="panel report-table"><div className="panel-title"><h3>Por categoría</h3><span>{reports!.categories.length} categorías</span></div>{reports!.categories.length === 0 ? <p>No hay categorías con ventas.</p> : <div className="report-list">{reports!.categories.map((category) => <article key={category.name}><div><strong>{category.name}</strong><small>{category.units} productos vendidos</small></div><span><b>{money(category.profit)}</b><small>{Number(category.margin).toFixed(2)}% margen</small></span></article>)}</div>}</section>
+                </div>
+                <div className="report-columns">
+                  <section className="panel report-table"><div className="panel-title"><h3>Productos con margen bajo</h3><span>Menos de 30%</span></div>{reports!.lowMarginProducts.length === 0 ? <p>No se detectaron productos con margen bajo.</p> : <div className="report-list">{reports!.lowMarginProducts.map((product) => <article key={product.productId}><div><strong>{product.name}</strong><small>{product.category} · costo {money(product.cost)}</small></div><span className="negative"><b>{Number(product.margin).toFixed(2)}%</b><small>{money(product.profit)} utilidad</small></span></article>)}</div>}</section>
+                  <section className="panel report-table"><div className="panel-title"><h3>Inventario y avisos</h3><span>{reports!.inventory.trackedIngredients} ingredientes</span></div>{reports!.inventory.lowStock.length === 0 ? <p>No hay ingredientes por debajo del mínimo.</p> : <div className="report-list">{reports!.inventory.lowStock.map((stock) => <article key={stock.ingredientId}><div><strong>{stock.name}</strong><small>Quedan {stock.quantity} {stock.unit} · mínimo {stock.minQuantity}</small></div><span><b>{money(stock.averageUnitCost)}</b><small>Costo unitario</small></span></article>)}</div>}</section>
+                </div>
+                <section className="panel report-table"><div className="panel-title"><h3>Ventas por día</h3><span>{reports!.daily.length} días con ventas</span></div>{reports!.daily.length === 0 ? <p>No hay ventas en este periodo.</p> : <div className="report-list">{reports!.daily.map((day) => <article key={day.date}><div><strong>{new Date(`${day.date}T12:00:00`).toLocaleDateString('es-MX')}</strong><small>{day.units} productos vendidos</small></div><span><b>{money(day.revenue)}</b><small>Utilidad {money(day.profit)}</small></span></article>)}</div>}</section>
+              </>}
             </div>
           )}
 
