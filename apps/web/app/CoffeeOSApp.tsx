@@ -149,6 +149,13 @@ interface ReportAggregate {
 interface ReportsOverview {
   period: { from: string; to: string };
   sales: ReportAggregate & { count: number; averageTicket: string };
+  comparison: {
+    revenue: { current: string; previous: string; difference: string; trend: string };
+    cost: { current: string; previous: string; difference: string; trend: string };
+    profit: { current: string; previous: string; difference: string; trend: string };
+    margin: { current: string; previous: string; difference: string; trend: string };
+    units: { current: string; previous: string; difference: string; trend: string };
+  };
   daily: (ReportAggregate & { date: string })[];
   products: (ReportAggregate & { productId: string; name: string; category: string })[];
   categories: (ReportAggregate & { name: string })[];
@@ -165,6 +172,12 @@ interface ReportsOverview {
       unit: string;
       averageUnitCost: string;
     }[];
+  };
+  alerts: {
+    lowMarginProducts: number;
+    lowStockIngredients: number;
+    salesWithoutCost: number;
+    productsWithoutRecipe: number;
   };
 }
 interface CloseSummary {
@@ -499,6 +512,45 @@ export default function CoffeeOSApp() {
       await apiRequest<ReportsOverview>(`/reports/overview?${params.toString()}`),
     );
   }, [apiRequest, branchId, can, reportFrom, reportTo, session]);
+
+  function exportReportCsv() {
+    if (!reports) return;
+    const rows = [
+      ['Sección', 'Nombre', 'Categoría', 'Unidades', 'Ingresos', 'Costo', 'Utilidad', 'Margen'],
+      ...reports.products.map((product) => [
+        'Producto',
+        product.name,
+        product.category,
+        String(product.units),
+        product.revenue,
+        product.cost,
+        product.profit,
+        product.margin,
+      ]),
+      ...reports.categories.map((category) => [
+        'Categoría',
+        category.name,
+        '',
+        String(category.units),
+        category.revenue,
+        category.cost,
+        category.profit,
+        category.margin,
+      ]),
+    ];
+    const csv = rows
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+    const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `coffeeos-reporte-${reportFrom}-${reportTo}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
 
   useEffect(() => {
     if (!session) return;
@@ -1535,6 +1587,8 @@ export default function CoffeeOSApp() {
                   <label>Desde<input type="date" value={reportFrom} onChange={(event) => setReportFrom(event.target.value)} /></label>
                   <label>Hasta<input type="date" value={reportTo} onChange={(event) => setReportTo(event.target.value)} /></label>
                   <button className="coffee-primary compact" disabled={busy}>Actualizar</button>
+                  <button type="button" className="coffee-link" disabled={!reports} onClick={exportReportCsv}>Exportar CSV</button>
+                  <button type="button" className="coffee-link" disabled={!reports} onClick={() => window.print()}>Imprimir / PDF</button>
                 </form>
               </div>
               {!reports ? <div className="panel empty-banner">Selecciona un periodo y actualiza para cargar el reporte.</div> : <>
@@ -1544,6 +1598,8 @@ export default function CoffeeOSApp() {
                   <div className="panel"><small>Costo</small><strong>{money(reports!.sales.cost)}</strong><span>Inventario actual {money(reports!.inventory.value)}</span></div>
                   <div className="panel"><small>Utilidad bruta</small><strong>{money(reports!.sales.profit)}</strong><span>Margen {Number(reports!.sales.margin).toFixed(2)}%</span></div>
                 </div>
+                <section className="panel report-table"><div className="panel-title"><h3>Comparación con el periodo anterior</h3><span>Periodo equivalente</span></div><div className="comparison-grid">{[['Ventas', reports!.comparison.revenue, money], ['Costo', reports!.comparison.cost, money], ['Utilidad', reports!.comparison.profit, money], ['Margen', reports!.comparison.margin, (value: string) => `${Number(value).toFixed(2)}%`], ['Unidades', reports!.comparison.units, (value: string) => Number(value).toFixed(0)]].map(([label, metric, formatter]) => { const data = metric as { current: string; previous: string; difference: string; trend: string }; const format = formatter as (value: string) => string; return <article key={String(label)}><div><strong>{String(label)}</strong><small>Actual {format(data.current)} · Anterior {format(data.previous)}</small></div><span className={data.trend === 'down' ? 'negative' : ''}><b>{data.trend === 'stable' ? 'Sin cambio' : data.trend === 'up' ? 'Subió' : 'Bajó'}</b><small>{format(data.difference)}</small></span></article>; })}</div></section>
+                <section className="panel report-table"><div className="panel-title"><h3>Alertas de información</h3><span>Revisa antes de tomar decisiones</span></div><div className="alert-summary"><span className={reports!.alerts.lowMarginProducts ? 'warning' : ''}>Margen bajo: <b>{reports!.alerts.lowMarginProducts}</b></span><span className={reports!.alerts.lowStockIngredients ? 'warning' : ''}>Bajo mínimo: <b>{reports!.alerts.lowStockIngredients}</b></span><span className={reports!.alerts.salesWithoutCost ? 'warning' : ''}>Ventas sin costo: <b>{reports!.alerts.salesWithoutCost}</b></span><span className={reports!.alerts.productsWithoutRecipe ? 'warning' : ''}>Sin receta: <b>{reports!.alerts.productsWithoutRecipe}</b></span></div></section>
                 <div className="report-columns">
                   <section className="panel report-table"><div className="panel-title"><h3>Productos más rentables</h3><span>{reports!.topProducts.length} productos</span></div>{reports!.topProducts.length === 0 ? <p>No hay ventas en este periodo.</p> : <div className="report-list">{reports!.topProducts.map((product) => <article key={product.productId}><div><strong>{product.name}</strong><small>{product.category} · {product.units} vendidos</small></div><span><b>{money(product.profit)}</b><small>{Number(product.margin).toFixed(2)}% margen</small></span></article>)}</div>}</section>
                   <section className="panel report-table"><div className="panel-title"><h3>Por categoría</h3><span>{reports!.categories.length} categorías</span></div>{reports!.categories.length === 0 ? <p>No hay categorías con ventas.</p> : <div className="report-list">{reports!.categories.map((category) => <article key={category.name}><div><strong>{category.name}</strong><small>{category.units} productos vendidos</small></div><span><b>{money(category.profit)}</b><small>{Number(category.margin).toFixed(2)}% margen</small></span></article>)}</div>}</section>

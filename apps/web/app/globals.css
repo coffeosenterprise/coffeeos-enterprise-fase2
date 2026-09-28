@@ -448,11 +448,34 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
 .ticket-total { font-size: 20px; }
 .ticket-thanks { margin-top: 25px; text-align: center; }
 .receipt-actions { display: grid; gap: 8px; margin-top: 22px; }
+.comparison-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.comparison-grid article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; border: 1px solid #e3e5df; border-radius: 11px; background: #fff; }
+.comparison-grid article > div, .comparison-grid article > span { display: grid; gap: 4px; }
+.comparison-grid article > span { text-align: right; }
+.comparison-grid small { color: var(--muted); font-size: 10px; }
+.comparison-grid .negative { color: #9c4b41; }
+.alert-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.alert-summary span { padding: 11px 12px; border: 1px solid #e3e5df; border-radius: 10px; color: #516057; background: #f8faf7; font-size: 11px; }
+.alert-summary span.warning { border-color: #e7c1a1; color: #87552e; background: #fff6eb; }
+.alert-summary b { margin-left: 4px; font-size: 14px; }
 
 @media print {
   body * { visibility: hidden; }
   #print-ticket, #print-ticket * { visibility: visible; }
   #print-ticket { position: absolute; left: 0; top: 0; width: 80mm; padding: 4mm; color: #000; background: #fff; }
+  body:has(.reports-page) * { visibility: visible; }
+  body:has(.reports-page) .coffee-sidebar,
+  body:has(.reports-page) .coffee-topbar,
+  body:has(.reports-page) .report-filters,
+  body:has(.reports-page) .modal-backdrop,
+  body:has(.reports-page) .coffee-link,
+  body:has(.reports-page) button,
+  body:has(.reports-page) input,
+  body:has(.reports-page) select { display: none !important; }
+  body:has(.reports-page) .coffee-app { display: block; }
+  body:has(.reports-page) .coffee-content { padding: 0; }
+  body:has(.reports-page) .reports-page { max-width: none; }
+  body:has(.reports-page) .panel { break-inside: avoid; box-shadow: none; }
 }
 
 @media (max-width: 1100px) {
@@ -474,8 +497,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
   .coffee-content { padding: 20px; }
   .inventory-layout, .catalog-layout, .pos-layout, .cash-columns { grid-template-columns: 1fr; }
   .report-columns { grid-template-columns: 1fr; }
+  .comparison-grid, .alert-summary { grid-template-columns: 1fr 1fr; }
   .cart-panel { position: static; height: auto; min-height: 500px; }
   .three-cards { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .comparison-grid, .alert-summary { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {

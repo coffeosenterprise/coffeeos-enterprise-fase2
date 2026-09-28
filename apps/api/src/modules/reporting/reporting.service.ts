@@ -26,6 +26,43 @@ const formatAggregate = (value: Aggregate) => ({
   units: value.units,
 });
 
+const aggregateSales = (
+  sales: {
+    total: unknown;
+    costTotal: unknown;
+    grossProfit: unknown;
+    items: { quantity: number }[];
+  }[],
+) => {
+  const aggregate = emptyAggregate();
+  for (const sale of sales) {
+    aggregate.revenue += Number(sale.total);
+    aggregate.cost += Number(sale.costTotal);
+    aggregate.profit += Number(sale.grossProfit);
+    aggregate.units += sale.items.reduce((sum, item) => sum + item.quantity, 0);
+  }
+  return aggregate;
+};
+
+const compareAggregates = (current: Aggregate, previous: Aggregate) => {
+  const delta = (now: number, before: number) => ({
+    current: now.toFixed(2),
+    previous: before.toFixed(2),
+    difference: (now - before).toFixed(2),
+    trend: now > before ? 'up' : now < before ? 'down' : 'stable',
+  });
+  return {
+    revenue: delta(current.revenue, previous.revenue),
+    cost: delta(current.cost, previous.cost),
+    profit: delta(current.profit, previous.profit),
+    margin: delta(
+      current.revenue ? (current.profit / current.revenue) * 100 : 0,
+      previous.revenue ? (previous.profit / previous.revenue) * 100 : 0,
+    ),
+    units: delta(current.units, previous.units),
+  };
+};
+
 @Injectable()
 export class ReportingService {
   constructor(private readonly prisma: PrismaService) {}
@@ -37,6 +74,9 @@ export class ReportingService {
     const from = query.from
       ? new Date(`${query.from.slice(0, 10)}T00:00:00.000Z`)
       : new Date(to.getTime() - 29 * 24 * 60 * 60 * 1000);
+    const periodLength = to.getTime() - from.getTime() + 1;
+    const previousTo = new Date(from.getTime() - 1);
+    const previousFrom = new Date(previousTo.getTime() - periodLength + 1);
 
     if (
       Number.isNaN(from.getTime()) ||
@@ -57,9 +97,22 @@ export class ReportingService {
         include: {
           items: {
             include: {
-              product: { include: { category: true } },
+              product: { include: { category: true, ingredients: true } },
             },
           },
+        },
+      });
+      const previousSales = await tx.sale.findMany({
+        where: {
+          status: 'completed',
+          createdAt: { gte: previousFrom, lte: previousTo },
+          ...(query.branchId ? { branchId: query.branchId } : {}),
+        },
+        select: {
+          total: true,
+          costTotal: true,
+          grossProfit: true,
+          items: { select: { quantity: true } },
         },
       });
 
@@ -153,6 +206,22 @@ export class ReportingService {
           name,
           ...formatAggregate(aggregate),
         }));
+      const lowMarginProducts = productRows
+        .filter(
+          (product) =>
+            Number(product.margin) < 30 && product.revenue !== '0.00',
+        )
+        .slice(0, 10);
+      const salesWithoutCost = sales.filter((sale) =>
+        sale.items.some((item) => Number(item.costTotal) === 0),
+      ).length;
+      const productsWithoutRecipe = new Set(
+        sales.flatMap((sale) =>
+          sale.items
+            .filter((item) => item.product.ingredients.length === 0)
+            .map((item) => item.productId),
+        ),
+      ).size;
 
       return {
         period: {
@@ -164,8 +233,9 @@ export class ReportingService {
           ...formatAggregate(totals),
           averageTicket: sales.length
             ? (totals.revenue / sales.length).toFixed(2)
-            : '0.00',
+          : '0.00',
         },
+        comparison: compareAggregates(totals, aggregateSales(previousSales)),
         daily: [...daily.entries()].map(([date, aggregate]) => ({
           date,
           ...formatAggregate(aggregate),
@@ -173,9 +243,13 @@ export class ReportingService {
         products: productRows,
         categories: categoryRows,
         topProducts: productRows.slice(0, 10),
-        lowMarginProducts: productRows
-          .filter((product) => Number(product.margin) < 30 && product.revenue !== '0.00')
-          .slice(0, 10),
+        lowMarginProducts,
+        alerts: {
+          lowMarginProducts: lowMarginProducts.length,
+          lowStockIngredients: lowStock.length,
+          salesWithoutCost,
+          productsWithoutRecipe,
+        },
         inventory: {
           value: inventoryValue.toFixed(2),
           lowStock,
