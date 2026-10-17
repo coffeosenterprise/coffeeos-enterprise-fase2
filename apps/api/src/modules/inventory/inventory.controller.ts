@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -20,6 +21,8 @@ import {
   InventoryMovementDto,
   RestockDto,
   UpdateInventoryStockDto,
+  ExecuteInventoryRecipeDto,
+  SaveInventoryRecipeDto,
 } from './inventory.dto';
 
 @Controller('inventory')
@@ -45,6 +48,38 @@ export class InventoryController {
     @Query('type') type?: string,
   ) {
     return this.inventoryService.movements(branchId, { stockId, type });
+  }
+
+  @Get('recipes')
+  recipes() {
+    return this.inventoryService.recipes();
+  }
+
+  @Post('recipes')
+  createRecipe(@Body() dto: SaveInventoryRecipeDto) {
+    return this.inventoryService.createRecipe(dto);
+  }
+
+  @Patch('recipes/:recipeId')
+  updateRecipe(
+    @Param('recipeId') recipeId: string,
+    @Body() dto: SaveInventoryRecipeDto,
+  ) {
+    return this.inventoryService.updateRecipe(recipeId, dto);
+  }
+
+  @Delete('recipes/:recipeId')
+  deleteRecipe(@Param('recipeId') recipeId: string) {
+    return this.inventoryService.deleteRecipe(recipeId);
+  }
+
+  @Post('recipes/:recipeId/execute')
+  executeRecipe(
+    @Req() req: Request & { user: AccessTokenPayload },
+    @Param('recipeId') recipeId: string,
+    @Body() dto: ExecuteInventoryRecipeDto,
+  ) {
+    return this.inventoryService.executeRecipe(recipeId, dto, req.user.sub);
   }
 
   @Post('ingredients')

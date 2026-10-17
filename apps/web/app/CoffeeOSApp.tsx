@@ -43,6 +43,18 @@ interface InventoryMovement {
   stock: { ingredient: Ingredient };
   actor?: { firstName: string; lastName: string; email: string } | null;
 }
+interface InventoryRecipe {
+  id: string;
+  name: string;
+  outputQuantity: string;
+  deductMode: 'auto_on_sale' | 'hybrid' | 'manual_prep';
+  outputIngredient: Ingredient;
+  items: {
+    ingredientId: string;
+    quantity: string;
+    ingredient: Ingredient;
+  }[];
+}
 interface Recipe {
   ingredientId: string;
   quantity: string;
@@ -293,6 +305,18 @@ export default function CoffeeOSApp() {
   const [terminalId, setTerminalId] = useState('');
   const [catalog, setCatalog] = useState<Category[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
+  const [inventoryRecipes, setInventoryRecipes] = useState<InventoryRecipe[]>([]);
+  const [editingInventoryRecipeId, setEditingInventoryRecipeId] = useState('');
+  const [recipeStock, setRecipeStock] = useState<Stock | null>(null);
+  const [inventoryRecipeDraft, setInventoryRecipeDraft] = useState({
+    name: '',
+    outputIngredientId: '',
+    outputQuantity: '1',
+    deductMode: 'auto_on_sale' as 'auto_on_sale' | 'hybrid' | 'manual_prep',
+  });
+  const [inventoryRecipeRows, setInventoryRecipeRows] = useState<
+    { ingredientId: string; quantity: string }[]
+  >([{ ingredientId: '', quantity: '1' }]);
   const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
   const [cashHistory, setCashHistory] = useState<ClosedCashSession[]>([]);
@@ -459,7 +483,12 @@ export default function CoffeeOSApp() {
 
   const loadStocks = useCallback(async () => {
     if (!branchId || !can('inventory.manage')) return;
-    setStocks(await apiRequest<Stock[]>(`/inventory?branchId=${branchId}`));
+    const [stockResult, recipeResult] = await Promise.all([
+      apiRequest<Stock[]>(`/inventory?branchId=${branchId}`),
+      apiRequest<InventoryRecipe[]>('/inventory/recipes'),
+    ]);
+    setStocks(stockResult);
+    setInventoryRecipes(recipeResult);
   }, [apiRequest, branchId, can]);
 
   const loadInventoryMovements = useCallback(async () => {
@@ -847,6 +876,119 @@ export default function CoffeeOSApp() {
       );
       formElement.reset();
     }, 'Ingrediente agregado al inventario.');
+  }
+
+  function resetInventoryRecipeEditor() {
+    setEditingInventoryRecipeId('');
+    setRecipeStock(null);
+    setInventoryRecipeDraft({
+      name: '',
+      outputIngredientId: '',
+      outputQuantity: '1',
+      deductMode: 'auto_on_sale',
+    });
+    setInventoryRecipeRows([{ ingredientId: '', quantity: '1' }]);
+  }
+
+  function openIngredientRecipe(stock: Stock) {
+    setRecipeStock(stock);
+    const existing = inventoryRecipes.find(
+      (r) => r.outputIngredient.id === stock.ingredient.id,
+    );
+    if (existing) {
+      setEditingInventoryRecipeId(existing.id);
+      setInventoryRecipeDraft({
+        name: existing.name || stock.ingredient.name,
+        outputIngredientId: stock.ingredient.id,
+        outputQuantity: String(existing.outputQuantity),
+        deductMode: existing.deductMode || 'auto_on_sale',
+      });
+      setInventoryRecipeRows(
+        existing.items.map((item) => ({
+          ingredientId: item.ingredientId,
+          quantity: String(item.quantity),
+        })),
+      );
+    } else {
+      setEditingInventoryRecipeId('');
+      setInventoryRecipeDraft({
+        name: `Receta de ${stock.ingredient.name}`,
+        outputIngredientId: stock.ingredient.id,
+        outputQuantity: '1',
+        deductMode: 'auto_on_sale',
+      });
+      setInventoryRecipeRows([{ ingredientId: '', quantity: '1' }]);
+    }
+  }
+
+  function submitInventoryRecipe(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const validItems = inventoryRecipeRows
+      .filter((row) => row.ingredientId && Number(row.quantity) > 0)
+      .map((row) => ({
+        ingredientId: row.ingredientId,
+        quantity: Number(row.quantity),
+      }));
+    if (
+      !inventoryRecipeDraft.outputIngredientId ||
+      Number(inventoryRecipeDraft.outputQuantity) <= 0 ||
+      validItems.length === 0
+    ) {
+      setNotice({
+        type: 'error',
+        text: 'Completa al menos un ingrediente y su cantidad consumida.',
+      });
+      return;
+    }
+
+    void run(async () => {
+      await apiRequest('/inventory/recipes', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: inventoryRecipeDraft.name.trim() || undefined,
+          outputIngredientId: inventoryRecipeDraft.outputIngredientId,
+          outputQuantity: Number(inventoryRecipeDraft.outputQuantity),
+          deductMode: inventoryRecipeDraft.deductMode,
+          items: validItems,
+        }),
+      });
+      resetInventoryRecipeEditor();
+      setInventoryRecipes(await apiRequest<InventoryRecipe[]>('/inventory/recipes'));
+    }, 'Receta del ingrediente guardada exitosamente.');
+  }
+
+  function deleteInventoryRecipe(recipe: InventoryRecipe) {
+    if (!window.confirm(`¿Quieres eliminar la receta del ingrediente "${recipe.outputIngredient.name}"?`)) return;
+    void run(async () => {
+      await apiRequest(`/inventory/recipes/${recipe.id}`, {
+        method: 'DELETE',
+      });
+      resetInventoryRecipeEditor();
+      setInventoryRecipes((current) =>
+        current.filter((item) => item.id !== recipe.id),
+      );
+    }, 'Receta eliminada.');
+  }
+
+  function executeInventoryRecipe(recipe: InventoryRecipe) {
+    const value = window.prompt(
+      `¿Cuántas unidades de ${recipe.outputIngredient.name} (${recipe.outputIngredient.unit}) preparaste?\nEl sistema descontará automáticamente los insumos consumidos.`,
+      Number(recipe.outputQuantity).toString(),
+    );
+    if (value === null) return;
+    const units = Number(value);
+    if (!Number.isFinite(units) || units <= 0) {
+      setNotice({ type: 'error', text: 'Escribe una cantidad mayor que cero.' });
+      return;
+    }
+    const batches = units / Number(recipe.outputQuantity);
+    void run(async () => {
+      await apiRequest(`/inventory/recipes/${recipe.id}/execute`, {
+        method: 'POST',
+        body: JSON.stringify({ branchId, batches }),
+      });
+      await Promise.all([loadStocks(), loadInventoryMovements()]);
+    }, `Preparación registrada: se sumaron ${units} ${recipe.outputIngredient.unit} de ${recipe.outputIngredient.name}.`);
   }
 
   function restock(stock: Stock) {
@@ -1458,7 +1600,7 @@ export default function CoffeeOSApp() {
               <div className="three-cards">
                 <form className="panel coffee-form" onSubmit={submitCompany}>
                   <span className="step">1</span><h3>Empresa</h3>
-                  <label>Nombre<input name="name" placeholder="Crepas Marco" required /></label>
+                  <label>Nombre<input name="name" placeholder="Cafetería Central" required /></label>
                   <button className="coffee-primary compact" disabled={busy}>Crear empresa</button>
                 </form>
                 <form className="panel coffee-form" onSubmit={submitBranch}>
@@ -1496,12 +1638,232 @@ export default function CoffeeOSApp() {
                   <div className="stock-grid">
                     {stocks.map((stock) => {
                       const isLow = Number(stock.quantity) <= Number(stock.minQuantity);
-                      return <article key={stock.id} className={isLow ? 'low' : ''}><div><strong>{stock.ingredient.name}</strong><small>{stock.ingredient.unit}</small></div><b>{Number(stock.quantity).toLocaleString('es-MX')}</b><p>Mínimo: {Number(stock.minQuantity).toLocaleString('es-MX')} · Costo promedio: {money(stock.averageUnitCost)}</p>{isLow && <span>Reponer pronto</span>}<div className="stock-actions"><button onClick={() => restock(stock)}>+ Agregar existencia</button><button onClick={() => setEditingStock(stock)}>Editar</button></div></article>;
+                      const recipe = inventoryRecipes.find((r) => r.outputIngredient.id === stock.ingredient.id);
+                      return (
+                        <article key={stock.id} className={isLow ? 'low' : ''}>
+                          <div>
+                            <div>
+                              <strong>{stock.ingredient.name}</strong>
+                              <small>{stock.ingredient.unit}</small>
+                            </div>
+                            {recipe && (
+                              <span
+                                className={`recipe-badge ${recipe.deductMode === 'auto_on_sale' ? 'auto' : recipe.deductMode === 'hybrid' ? 'hybrid' : 'manual'}`}
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '2px 7px',
+                                  borderRadius: '6px',
+                                  fontSize: '9px',
+                                  fontWeight: 700,
+                                  background: recipe.deductMode === 'auto_on_sale' ? '#dcfce7' : recipe.deductMode === 'hybrid' ? '#fef3c7' : '#f3e8ff',
+                                  color: recipe.deductMode === 'auto_on_sale' ? '#15803d' : recipe.deductMode === 'hybrid' ? '#b45309' : '#7e22ce',
+                                }}
+                                title={`Modo de descuento: ${recipe.deductMode}`}
+                              >
+                                {recipe.deductMode === 'auto_on_sale' && '⚡ Auto en venta'}
+                                {recipe.deductMode === 'hybrid' && '🔄 Híbrido'}
+                                {recipe.deductMode === 'manual_prep' && '👨‍🍳 Manual'}
+                              </span>
+                            )}
+                          </div>
+                          <b>{Number(stock.quantity).toLocaleString('es-MX')}</b>
+                          <p>Mínimo: {Number(stock.minQuantity).toLocaleString('es-MX')} · Costo promedio: {money(stock.averageUnitCost)}</p>
+                          {isLow && <span>Reponer pronto</span>}
+                          <div className="stock-actions" style={{ display: 'grid', gridTemplateColumns: recipe ? '1fr 1fr' : '1fr 1fr', gap: '6px' }}>
+                            <button type="button" onClick={() => restock(stock)}>+ Existencia</button>
+                            <button type="button" onClick={() => setEditingStock(stock)}>Editar</button>
+                            <button
+                              type="button"
+                              style={recipe ? { background: '#e0f2fe', color: '#0369a1' } : {}}
+                              onClick={() => openIngredientRecipe(stock)}
+                              title={recipe ? 'Ver o modificar receta de este ingrediente' : 'Crear receta para este ingrediente'}
+                            >
+                              {recipe ? '⚙ Receta' : '+ Receta'}
+                            </button>
+                            {recipe && (
+                              <button
+                                type="button"
+                                style={{ background: '#fef3c7', color: '#92400e' }}
+                                onClick={() => executeInventoryRecipe(recipe)}
+                                title="Registrar preparación de unidades de este ingrediente"
+                              >
+                                Preparar
+                              </button>
+                            )}
+                          </div>
+                        </article>
+                      );
                     })}
                     {stocks.length === 0 && <div className="blank-state">Todavía no hay ingredientes. Agrega el primero.</div>}
                   </div>
                 </div>
               </div>
+
+              {recipeStock && (
+                <div className="panel coffee-form" style={{ marginTop: '20px', border: '2px solid var(--green)', background: '#fff' }}>
+                  <div className="panel-title">
+                    <div>
+                      <small style={{ color: 'var(--green-2)', fontWeight: 700, letterSpacing: '1px' }}>RECETA DEL INGREDIENTE</small>
+                      <h3>Receta para: {recipeStock.ingredient.name} ({recipeStock.ingredient.unit})</h3>
+                    </div>
+                    <button type="button" className="coffee-link" onClick={() => resetInventoryRecipeEditor()}>
+                      Cerrar ✕
+                    </button>
+                  </div>
+                  <p className="field-help" style={{ marginBottom: '16px' }}>
+                    Configura de qué insumos primarios se compone <strong>{recipeStock.ingredient.name}</strong> y cómo se descontará al operar el negocio.
+                  </p>
+
+                  <form onSubmit={submitInventoryRecipe} style={{ display: 'grid', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontWeight: 700, marginBottom: '8px' }}>¿Cómo quieres que se descuente el inventario?</label>
+                      <div style={{ display: 'grid', gap: '10px' }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', background: inventoryRecipeDraft.deductMode === 'auto_on_sale' ? '#f0fdf4' : '#fff' }}>
+                          <input
+                            type="radio"
+                            name="deductMode"
+                            value="auto_on_sale"
+                            checked={inventoryRecipeDraft.deductMode === 'auto_on_sale'}
+                            onChange={() => setInventoryRecipeDraft((c) => ({ ...c, deductMode: 'auto_on_sale' }))}
+                            style={{ width: 'auto', minHeight: 'auto', marginTop: '3px' }}
+                          />
+                          <div>
+                            <strong>⚡ Descuento automático al vender en POS (Sub-receta)</strong>
+                            <p style={{ margin: '2px 0 0', color: 'var(--muted)', fontSize: '12px' }}>
+                              Al vender cualquier producto que use {recipeStock.ingredient.name}, el sistema descuenta automáticamente sus insumos primarios del inventario. No requiere preparar existencias con anticipación.
+                            </p>
+                          </div>
+                        </label>
+
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', background: inventoryRecipeDraft.deductMode === 'hybrid' ? '#fefce8' : '#fff' }}>
+                          <input
+                            type="radio"
+                            name="deductMode"
+                            value="hybrid"
+                            checked={inventoryRecipeDraft.deductMode === 'hybrid'}
+                            onChange={() => setInventoryRecipeDraft((c) => ({ ...c, deductMode: 'hybrid' }))}
+                            style={{ width: 'auto', minHeight: 'auto', marginTop: '3px' }}
+                          />
+                          <div>
+                            <strong>🔄 Híbrido / Inteligente</strong>
+                            <p style={{ margin: '2px 0 0', color: 'var(--muted)', fontSize: '12px' }}>
+                              Si tienes {recipeStock.ingredient.name} en existencia, consume ese stock primero. Si no alcanza o está en 0, descuenta automáticamente los insumos primarios de su receta en la venta.
+                            </p>
+                          </div>
+                        </label>
+
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', background: inventoryRecipeDraft.deductMode === 'manual_prep' ? '#faf5ff' : '#fff' }}>
+                          <input
+                            type="radio"
+                            name="deductMode"
+                            value="manual_prep"
+                            checked={inventoryRecipeDraft.deductMode === 'manual_prep'}
+                            onChange={() => setInventoryRecipeDraft((c) => ({ ...c, deductMode: 'manual_prep' }))}
+                            style={{ width: 'auto', minHeight: 'auto', marginTop: '3px' }}
+                          />
+                          <div>
+                            <strong>👨‍🍳 Preparación manual</strong>
+                            <p style={{ margin: '2px 0 0', color: 'var(--muted)', fontSize: '12px' }}>
+                              Solo descuenta insumos cuando pulses el botón &quot;Preparar&quot; para registrar piezas elaboradas que se suman a la existencia.
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="form-row">
+                      <label>
+                        Nombre descriptivo (opcional)
+                        <input
+                          value={inventoryRecipeDraft.name}
+                          onChange={(event) => setInventoryRecipeDraft((c) => ({ ...c, name: event.target.value }))}
+                          placeholder={`Receta de ${recipeStock.ingredient.name}`}
+                          maxLength={100}
+                        />
+                      </label>
+                      <label>
+                        Cantidad de {recipeStock.ingredient.name} que rinde esta proporción
+                        <input
+                          type="number"
+                          min="0.0001"
+                          step="0.001"
+                          value={inventoryRecipeDraft.outputQuantity}
+                          onChange={(event) => setInventoryRecipeDraft((c) => ({ ...c, outputQuantity: event.target.value }))}
+                          required
+                        />
+                      </label>
+                    </div>
+
+                    <fieldset>
+                      <legend>Insumos necesarios para producir {inventoryRecipeDraft.outputQuantity} {recipeStock.ingredient.unit} de {recipeStock.ingredient.name}</legend>
+                      {inventoryRecipeRows.map((row, index) => (
+                        <div className="builder-row" key={index}>
+                          <select
+                            value={row.ingredientId}
+                            onChange={(event) => setInventoryRecipeRows((rows) => rows.map((item, i) => i === index ? { ...item, ingredientId: event.target.value } : item))}
+                            required
+                          >
+                            <option value="">Selecciona ingrediente de consumo</option>
+                            {stocks
+                              .filter((s) => s.ingredient.id !== recipeStock.ingredient.id)
+                              .map((s) => (
+                                <option key={s.ingredient.id} value={s.ingredient.id}>
+                                  {s.ingredient.name} ({s.ingredient.unit})
+                                </option>
+                              ))}
+                          </select>
+                          <input
+                            type="number"
+                            min="0.0001"
+                            step="0.001"
+                            placeholder="Cantidad consumida"
+                            value={row.quantity}
+                            onChange={(event) => setInventoryRecipeRows((rows) => rows.map((item, i) => i === index ? { ...item, quantity: event.target.value } : item))}
+                            required
+                          />
+                          <button
+                            type="button"
+                            disabled={inventoryRecipeRows.length === 1}
+                            onClick={() => setInventoryRecipeRows((rows) => rows.filter((_, i) => i !== index))}
+                            title="Quitar insumo"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="coffee-link"
+                        onClick={() => setInventoryRecipeRows((rows) => [...rows, { ingredientId: '', quantity: '1' }])}
+                      >
+                        + Añadir otro insumo a la receta
+                      </button>
+                    </fieldset>
+
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '10px' }}>
+                      <button className="coffee-primary" disabled={busy}>
+                        {editingInventoryRecipeId ? 'Guardar cambios de la receta' : `Guardar receta de ${recipeStock.ingredient.name}`}
+                      </button>
+                      {editingInventoryRecipeId && (
+                        <button
+                          type="button"
+                          className="delete-product-button"
+                          disabled={busy}
+                          onClick={() => {
+                            const rec = inventoryRecipes.find((r) => r.id === editingInventoryRecipeId);
+                            if (rec) deleteInventoryRecipe(rec);
+                          }}
+                        >
+                          Eliminar receta
+                        </button>
+                      )}
+                      <button type="button" className="coffee-link" onClick={() => resetInventoryRecipeEditor()}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
             </div>
           )}
 
@@ -1539,7 +1901,7 @@ export default function CoffeeOSApp() {
                 <div className="side-forms">
                   <form className="panel coffee-form" onSubmit={submitCategory}>
                     <h3>Nueva categoría</h3>
-                    <label>Nombre<input name="name" placeholder="Crepas" required /></label>
+                    <label>Nombre<input name="name" placeholder="Bebidas Calientes" required /></label>
                     <label>Color<input name="color" type="color" defaultValue="#C87B45" /></label>
                     <button className="coffee-primary compact">Crear categoría</button>
                   </form>
@@ -1549,10 +1911,10 @@ export default function CoffeeOSApp() {
                 <form className="panel coffee-form product-builder" onSubmit={submitProduct}>
                   <div className="panel-title"><div><small>{editingProduct ? 'EDITAR PRODUCTO' : 'NUEVO PRODUCTO'}</small><h3>{editingProduct ? `Corrige ${editingProduct.name}` : 'Configura lo que vendes'}</h3></div>{editingProduct && <button type="button" className="coffee-link" onClick={() => resetProductEditor()}>Cancelar edición</button>}</div>
                   <div className="form-row"><label>Categoría<select name="categoryId" value={productDraft.categoryId} onChange={(event) => setProductDraft((current) => ({ ...current, categoryId: event.target.value }))} required><option value="">Selecciona</option>{catalog.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Precio base<input name="price" type="number" step="0.01" min="0" value={productDraft.price} onChange={(event) => setProductDraft((current) => ({ ...current, price: event.target.value }))} required /></label></div>
-                  <label>Nombre<input name="name" placeholder="Crepa especial" value={productDraft.name} onChange={(event) => setProductDraft((current) => ({ ...current, name: event.target.value }))} required /></label>
-                  <label>Descripción<input name="description" placeholder="Incluye una fruta, una mermelada y topping" value={productDraft.description} onChange={(event) => setProductDraft((current) => ({ ...current, description: event.target.value }))} /></label>
+                  <label>Nombre<input name="name" placeholder="Capuchino de la Casa" value={productDraft.name} onChange={(event) => setProductDraft((current) => ({ ...current, name: event.target.value }))} required /></label>
+                  <label>Descripción<input name="description" placeholder="Café espresso con leche espumada y jarabe artesanal" value={productDraft.description} onChange={(event) => setProductDraft((current) => ({ ...current, description: event.target.value }))} /></label>
                   <fieldset><legend>Receta base que se descuenta por unidad</legend>{recipeRows.map((row, index) => <div className="builder-row" key={index}><select value={row.ingredientId} onChange={(event) => updateRecipe(index, 'ingredientId', event.target.value)}><option value="">Ingrediente</option>{stocks.map((stock) => <option key={stock.ingredient.id} value={stock.ingredient.id}>{stock.ingredient.name} ({stock.ingredient.unit})</option>)}</select><input type="number" step="0.001" min="0" value={row.quantity} onChange={(event) => updateRecipe(index, 'quantity', Number(event.target.value))} /><button type="button" onClick={() => setRecipeRows((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>×</button></div>)}<button type="button" className="coffee-link" onClick={() => setRecipeRows((rows) => [...rows, { ingredientId: '', quantity: 1 }])}>+ Añadir ingrediente a la receta</button></fieldset>
-                  <fieldset><legend>Opciones y extras</legend><p className="field-help">Cada opción puede sumar precio y consumir un ingrediente. El máximo indica cuántas opciones puede elegir el cliente.</p>{modifierGroups.map((group, groupIndex) => <div className="modifier-builder" key={groupIndex}><div className="builder-row group-head"><input placeholder="Grupo: Fruta, mermelada, topping…" value={group.name} onChange={(event) => updateGroup(groupIndex, 'name', event.target.value)} /><label className="check-label"><input type="checkbox" checked={group.required} onChange={(event) => updateGroup(groupIndex, 'required', event.target.checked)} />Obligatorio</label><input aria-label="Máximo" title="Cantidad máxima que puede elegir el cliente" type="number" min="1" value={group.maxSelections} onChange={(event) => updateGroup(groupIndex, 'maxSelections', Number(event.target.value))} /><button type="button" title="Eliminar grupo" onClick={() => setModifierGroups((groups) => groups.filter((_, index) => index !== groupIndex))}>×</button></div>{group.options.map((option, optionIndex) => <div className="option-row" key={option.id ?? optionIndex}><input placeholder="Opción: Nutella o plátano extra" value={option.name} onChange={(event) => updateOption(groupIndex, optionIndex, 'name', event.target.value)} /><input aria-label="Precio extra" type="number" step="0.01" min="0" placeholder="+ precio" value={option.priceDelta} onChange={(event) => updateOption(groupIndex, optionIndex, 'priceDelta', Number(event.target.value))} /><select value={option.ingredientId} onChange={(event) => updateOption(groupIndex, optionIndex, 'ingredientId', event.target.value)}><option value="">Sin consumo extra</option>{stocks.map((stock) => <option key={stock.ingredient.id} value={stock.ingredient.id}>{stock.ingredient.name} ({stock.ingredient.unit})</option>)}</select><input aria-label="Consumo" title="Cantidad que se descontará del inventario" type="number" step="0.001" min="0" value={option.quantity} onChange={(event) => updateOption(groupIndex, optionIndex, 'quantity', Number(event.target.value))} /><button type="button" className="remove-option" title={`Eliminar opción ${option.name || ''}`} onClick={() => removeOption(groupIndex, optionIndex)}>×</button></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => groups.map((item, index) => index === groupIndex ? { ...item, options: [...item.options, { name: '', priceDelta: 0, ingredientId: '', quantity: 0 }] } : item))}>+ Añadir opción</button></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => [...groups, blankModifierGroup()])}>+ Añadir grupo de opciones</button></fieldset>
+                  <fieldset><legend>Opciones y extras</legend><p className="field-help">Cada opción puede sumar precio y consumir un ingrediente. El máximo indica cuántas opciones puede elegir el cliente.</p>{modifierGroups.map((group, groupIndex) => <div className="modifier-builder" key={groupIndex}><div className="builder-row group-head"><input placeholder="Grupo: Tipo de leche, tamaño, jarabe…" value={group.name} onChange={(event) => updateGroup(groupIndex, 'name', event.target.value)} /><label className="check-label"><input type="checkbox" checked={group.required} onChange={(event) => updateGroup(groupIndex, 'required', event.target.checked)} />Obligatorio</label><input aria-label="Máximo" title="Cantidad máxima que puede elegir el cliente" type="number" min="1" value={group.maxSelections} onChange={(event) => updateGroup(groupIndex, 'maxSelections', Number(event.target.value))} /><button type="button" title="Eliminar grupo" onClick={() => setModifierGroups((groups) => groups.filter((_, index) => index !== groupIndex))}>×</button></div>{group.options.map((option, optionIndex) => <div className="option-row" key={option.id ?? optionIndex}><input placeholder="Opción: Leche de almendra, shot extra…" value={option.name} onChange={(event) => updateOption(groupIndex, optionIndex, 'name', event.target.value)} /><input aria-label="Precio extra" type="number" step="0.01" min="0" placeholder="+ precio" value={option.priceDelta} onChange={(event) => updateOption(groupIndex, optionIndex, 'priceDelta', Number(event.target.value))} /><select value={option.ingredientId} onChange={(event) => updateOption(groupIndex, optionIndex, 'ingredientId', event.target.value)}><option value="">Sin consumo extra</option>{stocks.map((stock) => <option key={stock.ingredient.id} value={stock.ingredient.id}>{stock.ingredient.name} ({stock.ingredient.unit})</option>)}</select><input aria-label="Consumo" title="Cantidad que se descontará del inventario" type="number" step="0.001" min="0" value={option.quantity} onChange={(event) => updateOption(groupIndex, optionIndex, 'quantity', Number(event.target.value))} /><button type="button" className="remove-option" title={`Eliminar opción ${option.name || ''}`} onClick={() => removeOption(groupIndex, optionIndex)}>×</button></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => groups.map((item, index) => index === groupIndex ? { ...item, options: [...item.options, { name: '', priceDelta: 0, ingredientId: '', quantity: 0 }] } : item))}>+ Añadir opción</button></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => [...groups, blankModifierGroup()])}>+ Añadir grupo de opciones</button></fieldset>
                   <div className="product-actions"><button className="coffee-primary" disabled={busy || catalog.length === 0}>{editingProduct ? 'Guardar cambios de producto y receta' : 'Guardar producto'}</button>{editingProduct && <button type="button" className="delete-product-button" disabled={busy} onClick={() => setDeletingProduct(editingProduct)}>Eliminar producto</button>}</div>
                 </form>
               </div>

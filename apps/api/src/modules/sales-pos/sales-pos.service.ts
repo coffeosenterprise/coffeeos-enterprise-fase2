@@ -195,6 +195,60 @@ export class SalesPosService {
         );
       }
 
+      // Resolve sub-recipes for ingredients (auto_on_sale or hybrid)
+      const ingredientRecipes = await tx.inventoryRecipe.findMany({
+        where: {
+          outputIngredientId: { in: [...consumption.keys()] },
+        },
+        include: { items: true },
+      });
+      if (ingredientRecipes.length > 0) {
+        const recipeMap = new Map(
+          ingredientRecipes.map((r) => [r.outputIngredientId, r]),
+        );
+        const candidateStocks = await tx.inventoryStock.findMany({
+          where: {
+            branchId: dto.branchId,
+            ingredientId: { in: [...consumption.keys()] },
+          },
+        });
+        const candidateStockMap = new Map(
+          candidateStocks.map((s) => [s.ingredientId, s]),
+        );
+
+        for (const [ingredientId, required] of Array.from(consumption.entries())) {
+          const recipe = recipeMap.get(ingredientId);
+          if (!recipe || recipe.deductMode === 'manual_prep') continue;
+
+          const currentStock = candidateStockMap.get(ingredientId);
+          const availableStock = currentStock
+            ? new Prisma.Decimal(currentStock.quantity)
+            : new Prisma.Decimal(0);
+
+          let rawToDeduct = required;
+          if (recipe.deductMode === 'hybrid') {
+            if (availableStock.gte(required)) {
+              continue;
+            }
+            if (availableStock.gt(0)) {
+              consumption.set(ingredientId, availableStock);
+              rawToDeduct = required.minus(availableStock);
+            } else {
+              consumption.delete(ingredientId);
+            }
+          } else {
+            consumption.delete(ingredientId);
+          }
+
+          const multiplier = rawToDeduct.div(recipe.outputQuantity);
+          for (const item of recipe.items) {
+            const itemQuantity = new Prisma.Decimal(item.quantity).mul(multiplier);
+            const current = consumption.get(item.ingredientId) ?? new Prisma.Decimal(0);
+            consumption.set(item.ingredientId, current.plus(itemQuantity));
+          }
+        }
+      }
+
       const stocks = await tx.inventoryStock.findMany({
         where: {
           branchId: dto.branchId,

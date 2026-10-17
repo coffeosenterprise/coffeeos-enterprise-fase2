@@ -11,6 +11,8 @@ import type {
   InventoryMovementDto,
   RestockDto,
   UpdateInventoryStockDto,
+  ExecuteInventoryRecipeDto,
+  SaveInventoryRecipeDto,
 } from './inventory.dto';
 
 @Injectable()
@@ -37,6 +39,290 @@ export class InventoryService {
         (stock) => Number(stock.quantity) <= Number(stock.minQuantity),
       );
     });
+  }
+
+  recipes() {
+    return this.prisma.withTenantContext((tx) =>
+      tx.inventoryRecipe.findMany({
+        include: {
+          outputIngredient: true,
+          items: { include: { ingredient: true } },
+        },
+        orderBy: { name: 'asc' },
+      }),
+    );
+  }
+
+  createRecipe(dto: SaveInventoryRecipeDto) {
+    const { tenantId } = getTenantContext();
+    return this.prisma.withTenantContext(async (tx) => {
+      await this.validateRecipeDefinition(tx, dto);
+      const ingredient = await tx.ingredient.findFirstOrThrow({
+        where: { id: dto.outputIngredientId },
+      });
+      const name = dto.name?.trim() || ingredient.name;
+      const deductMode = dto.deductMode || 'auto_on_sale';
+
+      const existing = await tx.inventoryRecipe.findFirst({
+        where: { outputIngredientId: dto.outputIngredientId },
+      });
+
+      if (existing) {
+        await tx.inventoryRecipeItem.deleteMany({ where: { recipeId: existing.id } });
+        return tx.inventoryRecipe.update({
+          where: { id: existing.id },
+          data: {
+            name,
+            deductMode,
+            outputQuantity: dto.outputQuantity,
+            items: {
+              create: dto.items.map((item) => ({
+                tenantId,
+                ingredientId: item.ingredientId,
+                quantity: item.quantity,
+              })),
+            },
+          },
+          include: {
+            outputIngredient: true,
+            items: { include: { ingredient: true } },
+          },
+        });
+      }
+
+      return tx.inventoryRecipe.create({
+        data: {
+          tenantId,
+          name,
+          deductMode,
+          outputIngredientId: dto.outputIngredientId,
+          outputQuantity: dto.outputQuantity,
+          items: {
+            create: dto.items.map((item) => ({
+              tenantId,
+              ingredientId: item.ingredientId,
+              quantity: item.quantity,
+            })),
+          },
+        },
+        include: {
+          outputIngredient: true,
+          items: { include: { ingredient: true } },
+        },
+      });
+    });
+  }
+
+  updateRecipe(recipeId: string, dto: SaveInventoryRecipeDto) {
+    const { tenantId } = getTenantContext();
+    return this.prisma.withTenantContext(async (tx) => {
+      const recipe = await tx.inventoryRecipe.findFirst({
+        where: { id: recipeId },
+        include: { outputIngredient: true },
+      });
+      if (!recipe) {
+        throw new NotFoundException('Receta de inventario no encontrada');
+      }
+      await this.validateRecipeDefinition(tx, dto);
+      const name = dto.name?.trim() || recipe.outputIngredient.name;
+      const deductMode = dto.deductMode || recipe.deductMode;
+      await tx.inventoryRecipeItem.deleteMany({ where: { recipeId } });
+      return tx.inventoryRecipe.update({
+        where: { id: recipeId },
+        data: {
+          name,
+          deductMode,
+          outputIngredientId: dto.outputIngredientId,
+          outputQuantity: dto.outputQuantity,
+          items: {
+            create: dto.items.map((item) => ({
+              tenantId,
+              ingredientId: item.ingredientId,
+              quantity: item.quantity,
+            })),
+          },
+        },
+        include: {
+          outputIngredient: true,
+          items: { include: { ingredient: true } },
+        },
+      });
+    });
+  }
+
+  deleteRecipe(recipeId: string) {
+    return this.prisma.withTenantContext(async (tx) => {
+      const recipe = await tx.inventoryRecipe.findFirst({
+        where: { id: recipeId },
+      });
+      if (!recipe) {
+        throw new NotFoundException('Receta de inventario no encontrada');
+      }
+      await tx.inventoryRecipe.delete({ where: { id: recipeId } });
+      return { deleted: true };
+    });
+  }
+
+  executeRecipe(
+    recipeId: string,
+    dto: ExecuteInventoryRecipeDto,
+    actorId: string,
+  ) {
+    const { tenantId } = getTenantContext();
+    return this.prisma.withTenantContext(async (tx) => {
+      const branch = await tx.branch.findFirst({
+        where: { id: dto.branchId, deletedAt: null },
+      });
+      if (!branch) throw new NotFoundException('Sucursal no encontrada');
+
+      const recipe = await tx.inventoryRecipe.findFirst({
+        where: { id: recipeId },
+        include: {
+          outputIngredient: true,
+          items: { include: { ingredient: true } },
+        },
+      });
+      if (!recipe) {
+        throw new NotFoundException('Receta de inventario no encontrada');
+      }
+
+      const ingredientIds = [
+        recipe.outputIngredientId,
+        ...recipe.items.map((item) => item.ingredientId),
+      ];
+      const stocks = await tx.inventoryStock.findMany({
+        where: {
+          branchId: dto.branchId,
+          ingredientId: { in: ingredientIds },
+        },
+        include: { ingredient: true },
+      });
+      const stockMap = new Map(stocks.map((stock) => [stock.ingredientId, stock]));
+      const batches = new Prisma.Decimal(dto.batches);
+      const requirements = recipe.items.map((item) => ({
+        item,
+        required: new Prisma.Decimal(item.quantity).mul(batches),
+      }));
+      for (const requirement of requirements) {
+        const stock = stockMap.get(requirement.item.ingredientId);
+        if (!stock) {
+          throw new BadRequestException(
+            `Falta inventario para ${requirement.item.ingredient.name}`,
+          );
+        }
+        if (new Prisma.Decimal(stock.quantity).lt(requirement.required)) {
+          throw new BadRequestException(
+            `Inventario insuficiente de ${stock.ingredient.name}`,
+          );
+        }
+      }
+
+      const outputStock = stockMap.get(recipe.outputIngredientId);
+      if (!outputStock) {
+        throw new BadRequestException(
+          `Agrega ${recipe.outputIngredient.name} al inventario de esta sucursal antes de producir`,
+        );
+      }
+
+      let productionCost = new Prisma.Decimal(0);
+      for (const requirement of requirements) {
+        const stock = stockMap.get(requirement.item.ingredientId)!;
+        const consumedCost = requirement.required.mul(stock.averageUnitCost);
+        productionCost = productionCost.plus(consumedCost);
+        const updated = await tx.inventoryStock.update({
+          where: { id: stock.id },
+          data: { quantity: { decrement: requirement.required } },
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            stockId: stock.id,
+            type: 'production_input',
+            quantity: requirement.required.negated(),
+            balanceBefore: stock.quantity,
+            balanceAfter: updated.quantity,
+            unitCost: stock.averageUnitCost,
+            totalCost: consumedCost,
+            referenceId: recipe.id,
+            actorId,
+            reason: 'production',
+            note: `Producción de ${recipe.outputIngredient.name}`,
+          },
+        });
+      }
+
+      const producedQuantity = new Prisma.Decimal(recipe.outputQuantity).mul(batches);
+      const previousOutputQuantity = new Prisma.Decimal(outputStock.quantity);
+      const previousOutputValue = previousOutputQuantity.mul(
+        outputStock.averageUnitCost,
+      );
+      const nextOutputQuantity = previousOutputQuantity.plus(producedQuantity);
+      const nextAverageCost = nextOutputQuantity.gt(0)
+        ? previousOutputValue.plus(productionCost).div(nextOutputQuantity)
+        : new Prisma.Decimal(0);
+      const updatedOutput = await tx.inventoryStock.update({
+        where: { id: outputStock.id },
+        data: {
+          quantity: nextOutputQuantity,
+          averageUnitCost: nextAverageCost,
+        },
+        include: { ingredient: true },
+      });
+      await tx.inventoryMovement.create({
+        data: {
+          tenantId,
+          stockId: outputStock.id,
+          type: 'production_output',
+          quantity: producedQuantity,
+          balanceBefore: outputStock.quantity,
+          balanceAfter: nextOutputQuantity,
+          unitCost: productionCost.div(producedQuantity),
+          totalCost: productionCost,
+          referenceId: recipe.id,
+          actorId,
+          reason: 'production',
+          note: `Resultado de ${recipe.name}`,
+        },
+      });
+
+      return {
+        recipeId: recipe.id,
+        recipeName: recipe.name,
+        batches,
+        producedQuantity,
+        productionCost,
+        outputStock: updatedOutput,
+      };
+    });
+  }
+
+  private async validateRecipeDefinition(
+    tx: Prisma.TransactionClient,
+    dto: SaveInventoryRecipeDto,
+  ) {
+    const ingredientIds = dto.items.map((item) => item.ingredientId);
+    if (ingredientIds.includes(dto.outputIngredientId)) {
+      throw new BadRequestException(
+        'El ingrediente producido no puede consumirse en la misma receta',
+      );
+    }
+    if (new Set(ingredientIds).size !== ingredientIds.length) {
+      throw new BadRequestException(
+        'No repitas ingredientes dentro de la receta',
+      );
+    }
+    const ingredients = await tx.ingredient.findMany({
+      where: {
+        id: { in: [dto.outputIngredientId, ...ingredientIds] },
+        active: true,
+      },
+      select: { id: true },
+    });
+    if (ingredients.length !== ingredientIds.length + 1) {
+      throw new BadRequestException(
+        'Uno o más ingredientes de la receta no existen o están inactivos',
+      );
+    }
   }
 
   create(dto: CreateIngredientDto) {

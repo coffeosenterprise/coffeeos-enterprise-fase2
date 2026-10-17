@@ -7,3 +7,4 @@ dist/
 .env.local
 coverage/
 .DS_Store
+apps/api/prisma/migrations_draft/

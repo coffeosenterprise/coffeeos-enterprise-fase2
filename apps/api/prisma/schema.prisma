@@ -38,6 +38,8 @@ model Tenant {
   sales              Sale[]
   cashSessions       CashSession[]
   emailVerifications EmailVerification[]
+  inventoryRecipes   InventoryRecipe[]
+  inventoryRecipeItems InventoryRecipeItem[]
 
   @@map("tenants")
 }
@@ -403,6 +405,8 @@ model Ingredient {
   stocks              InventoryStock[]
   productIngredients  ProductIngredient[]
   modifierIngredients ModifierOptionIngredient[]
+  outputRecipes       InventoryRecipe[]     @relation("InventoryRecipeOutput")
+  recipeInputs        InventoryRecipeItem[] @relation("InventoryRecipeInput")
 
   @@unique([tenantId, name])
   @@unique([id, tenantId])
@@ -489,6 +493,43 @@ model InventoryMovement {
   @@index([actorId])
   @@index([createdAt])
   @@map("inventory_movements")
+}
+
+model InventoryRecipe {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  name               String
+  outputIngredientId String   @map("output_ingredient_id") @db.Uuid
+  outputQuantity     Decimal  @default(1) @map("output_quantity") @db.Decimal(14, 3)
+  deductMode         String   @default("auto_on_sale") @map("deduct_mode")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant           Tenant                @relation(fields: [tenantId], references: [id])
+  outputIngredient Ingredient            @relation("InventoryRecipeOutput", fields: [outputIngredientId, tenantId], references: [id, tenantId])
+  items            InventoryRecipeItem[]
+
+  @@unique([tenantId, outputIngredientId])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([outputIngredientId])
+  @@map("inventory_recipes")
+}
+
+model InventoryRecipeItem {
+  tenantId    String  @map("tenant_id") @db.Uuid
+  recipeId    String  @map("recipe_id") @db.Uuid
+  ingredientId String @map("ingredient_id") @db.Uuid
+  quantity    Decimal @db.Decimal(14, 3)
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id])
+  recipe     InventoryRecipe @relation(fields: [recipeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  ingredient Ingredient      @relation("InventoryRecipeInput", fields: [ingredientId, tenantId], references: [id, tenantId])
+
+  @@id([recipeId, ingredientId])
+  @@index([tenantId])
+  @@index([ingredientId])
+  @@map("inventory_recipe_items")
 }
 
 // ============================================================
