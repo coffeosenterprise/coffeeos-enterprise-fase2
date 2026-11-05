@@ -127,7 +127,7 @@ export class InventoryRecipeItemDto {
 
   @Type(() => Number)
   @IsNumber()
-  @Min(0.001)
+  @Min(0.0001)
   @Max(1_000_000_000)
   quantity!: number;
 }

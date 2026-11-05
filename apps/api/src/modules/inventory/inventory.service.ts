@@ -77,7 +77,6 @@ export class InventoryService {
             outputQuantity: dto.outputQuantity,
             items: {
               create: dto.items.map((item) => ({
-                tenantId,
                 ingredientId: item.ingredientId,
                 quantity: item.quantity,
               })),
@@ -99,7 +98,6 @@ export class InventoryService {
           outputQuantity: dto.outputQuantity,
           items: {
             create: dto.items.map((item) => ({
-              tenantId,
               ingredientId: item.ingredientId,
               quantity: item.quantity,
             })),
@@ -114,7 +112,6 @@ export class InventoryService {
   }
 
   updateRecipe(recipeId: string, dto: SaveInventoryRecipeDto) {
-    const { tenantId } = getTenantContext();
     return this.prisma.withTenantContext(async (tx) => {
       const recipe = await tx.inventoryRecipe.findFirst({
         where: { id: recipeId },
@@ -136,7 +133,6 @@ export class InventoryService {
           outputQuantity: dto.outputQuantity,
           items: {
             create: dto.items.map((item) => ({
-              tenantId,
               ingredientId: item.ingredientId,
               quantity: item.quantity,
             })),
