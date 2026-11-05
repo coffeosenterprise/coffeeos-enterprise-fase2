@@ -461,8 +461,67 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
 
 @media print {
   body * { visibility: hidden; }
-  #print-ticket, #print-ticket * { visibility: visible; }
-  #print-ticket { position: absolute; left: 0; top: 0; width: 80mm; padding: 4mm; color: #000; background: #fff; }
+
+  /* Ticket Rollo Térmico */
+  body:has(#print-ticket) #print-ticket,
+  body:has(#print-ticket) #print-ticket * {
+    visibility: visible;
+  }
+  body:has(#print-ticket) #print-ticket {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    padding: 3mm;
+    color: #000;
+    background: #fff;
+  }
+
+  /* Ticket Hoja Normal Carta */
+  body:has(#print-ticket.ticket-sheet-wrap) #print-ticket {
+    position: absolute;
+    left: 50%;
+    top: 15mm;
+    transform: translateX(-50%);
+    width: 80mm;
+    padding: 6mm;
+    color: #000;
+    background: #fff;
+    border: 1px dashed #777;
+    box-shadow: none;
+  }
+
+  /* Corte Z impreso */
+  body:has(#print-corte-z) #print-corte-z,
+  body:has(#print-corte-z) #print-corte-z * {
+    visibility: visible;
+  }
+  body:has(#print-corte-z) #print-corte-z {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    padding: 4mm;
+    color: #000;
+    background: #fff;
+  }
+
+  /* Reporte de Inventario impreso */
+  body:has(#print-inventory-report) #print-inventory-report,
+  body:has(#print-inventory-report) #print-inventory-report * {
+    visibility: visible;
+  }
+  body:has(#print-inventory-report) #print-inventory-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 10mm;
+    background: #fff;
+    color: #000;
+  }
+
+  /* Reportes existentes */
   body:has(.reports-page) * { visibility: visible; }
   body:has(.reports-page) .coffee-sidebar,
   body:has(.reports-page) .coffee-topbar,
@@ -477,6 +536,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
   body:has(.reports-page) .reports-page { max-width: none; }
   body:has(.reports-page) .panel { break-inside: avoid; box-shadow: none; }
 }
+
 
 @media (max-width: 1100px) {
   .coffee-auth { grid-template-columns: 1fr; }
@@ -518,3 +578,139 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
   .product-grid { grid-template-columns: 1fr 1fr; }
   .product-card { min-height: 170px; }
 }
+
+/* ==== LOGO ==== */
+.coffee-logo { display: flex; align-items: center; gap: 10px; font: 700 17px/1 'Manrope', sans-serif; }
+.coffee-logo span { letter-spacing: -.3px; }
+
+/* ==== POS REDESIGN ==== */
+.pos-top-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.pos-search-box { flex: 1; min-width: 240px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1.5px solid #d5d9d4; border-radius: 12px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+.pos-search-input { flex: 1; border: 0; outline: none; font-size: 14px; background: transparent; }
+.search-icon { font-size: 16px; }
+.search-clear-btn { border: 0; background: transparent; color: #999; font-size: 18px; cursor: pointer; padding: 0 2px; }
+.pos-quick-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.pos-action-btn { padding: 8px 14px; border: 1.5px solid #d5d9d4; border-radius: 10px; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.pos-action-btn.highlight { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+.pos-action-btn b { font-size: 13px; }
+.pos-action-btn span { color: var(--muted); }
+.pos-action-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Touch product cards */
+.touch-card { position: relative; overflow: hidden; display: flex; flex-direction: column; padding: 0; border: 1.5px solid var(--line); border-radius: 14px; background: var(--paper); text-align: left; transition: transform .15s, box-shadow .15s; }
+.touch-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(25,76,59,.12); }
+.product-card-top-strip { height: 5px; width: 100%; }
+.product-card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.product-card-body strong { font-size: 13px; font-weight: 700; }
+.product-card-body small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.product-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.product-price-tag { font: 700 17px/1 'Manrope', sans-serif; color: var(--green); }
+.customizable-badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: #fef3c7; color: #92400e; }
+
+/* Modern cart panel */
+.modern-cart { display: flex; flex-direction: column; }
+.cart-clear-btn { border: 0; background: transparent; color: var(--danger); font-size: 11px; font-weight: 700; cursor: pointer; }
+.cart-item-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0ee; }
+.cart-item-info { display: flex; flex-direction: column; gap: 3px; }
+.cart-item-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.cart-item-header strong { font-size: 13px; }
+.cart-item-remove-btn { border: 0; background: transparent; color: #aaa; font-size: 18px; cursor: pointer; padding: 0; line-height: 1; }
+.cart-item-remove-btn:hover { color: var(--danger); }
+.cart-item-modifiers { color: var(--muted); font-size: 10px; }
+.cart-item-pricing { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); }
+.cart-item-pricing b { color: var(--ink); font-size: 13px; }
+.cart-summary-box { margin-top: auto; padding-top: 14px; }
+.cart-subtotal-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); padding: 6px 0; }
+.cart-total-banner { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 10px; background: var(--green); color: #fff; margin: 8px 0; }
+.cart-total-banner span { font-size: 11px; font-weight: 700; letter-spacing: .5px; }
+.cart-total-banner strong { font: 700 22px/1 'Manrope', sans-serif; }
+.touch-charge { min-height: 54px; font-size: 16px; font-weight: 800; border-radius: 12px; letter-spacing: .5px; }
+
+/* ==== SUBVIEW TABS ==== */
+.subview-tabs { display: flex; gap: 4px; padding: 5px; margin-bottom: 20px; border-radius: 12px; background: #eeece5; width: fit-content; }
+.subview-tabs button { min-height: 38px; padding: 7px 16px; border: 0; border-radius: 8px; color: #788079; background: transparent; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+.subview-tabs button.active { color: var(--ink); background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+
+/* ==== SETUP TICKET CONFIG ==== */
+.setup-ticket-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.ticket-live-preview { padding: 20px; }
+.sample-ticket-preview { width: min(100%, 300px); margin: 0 auto; padding: 16px; border: 1px dashed #bbb; border-radius: 8px; background: #fafafa; font-size: 11px; font-family: 'Courier New', monospace; }
+.ticket-header-logo { text-align: center; margin-bottom: 6px; }
+.sample-ticket-name { font-size: 14px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+.sample-ticket-muted { color: #666; text-align: center; font-size: 9px; }
+.ticket-divider { border: 0; border-top: 1px dashed #bbb; margin: 8px 0; }
+.sample-ticket-row { display: flex; justify-content: space-between; margin: 3px 0; }
+.sample-ticket-row.total { font-size: 14px; font-weight: 700; background: #f0f0f0; padding: 4px; border-radius: 4px; }
+.sample-ticket-sub { color: #888; font-size: 9px; padding-left: 12px; }
+.sample-ticket-footer { text-align: center; margin-top: 12px; color: #888; font-size: 9px; }
+
+/* ==== STRUCTURE SUMMARY (branches tab) ==== */
+.structure-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 12px; }
+.structure-card { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #f8faf7; }
+.structure-card small { display: block; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px; }
+.structure-card strong { font-size: 14px; }
+.structure-branches { margin-top: 10px; display: grid; gap: 6px; }
+.structure-branch-item { padding: 8px 10px; background: #fff; border: 1px solid #e5e7e3; border-radius: 8px; font-size: 12px; }
+.structure-terminals { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.terminal-pill { padding: 2px 8px; background: var(--green-soft); color: var(--green); border-radius: 20px; font-size: 10px; font-weight: 600; }
+
+/* ==== VALUATION REPORT / PRINTABLE ==== */
+.valuation-report-container { display: grid; gap: 20px; }
+.valuation-screen-actions { display: grid; gap: 14px; }
+.valuation-action-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+.text-danger { color: var(--danger); }
+.printable-report-sheet { border: 1px solid var(--line); border-radius: 14px; padding: 28px 32px; background: #fff; }
+.report-print-header { margin-bottom: 24px; }
+.report-brand-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.report-brand-row h2 { margin: 0 0 4px; font: 700 20px 'Manrope', sans-serif; }
+.report-brand-row p, .report-brand-row small { margin: 0; color: var(--muted); font-size: 12px; }
+.report-title-badge h1 { margin: 0 0 6px; font: 700 16px/1.3 'Manrope', sans-serif; letter-spacing: -.3px; }
+.report-title-badge p { margin: 0; color: var(--muted); font-size: 12px; }
+.printable-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 16px; }
+.printable-table th { background: var(--green); color: #fff; padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 700; }
+.printable-table th.num, .printable-table td.num { text-align: right; }
+.printable-table td { padding: 7px 10px; border-bottom: 1px solid #eee; }
+.printable-table tbody tr:nth-child(even) { background: #f9f9f7; }
+.printable-table tfoot td { background: var(--green-soft); font-weight: 700; padding: 9px 10px; }
+.printable-table tr.row-alert { background: #fff8f4 !important; }
+.status-tag { padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+.status-tag.ok { background: #dcfce7; color: #15803d; }
+.status-tag.danger { background: #fee2e2; color: #991b1b; }
+.report-signature-block { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; }
+.signature-box { text-align: center; }
+.sig-line { border-bottom: 1px solid #333; margin-bottom: 8px; height: 40px; }
+.signature-box strong { display: block; font-size: 12px; }
+.signature-box p { color: var(--muted); font-size: 11px; margin: 3px 0 0; }
+
+/* ==== RECEIPT DUAL FORMAT ==== */
+.receipt-format-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 10px; background: #eeece5; margin-bottom: 16px; }
+.receipt-format-tabs button { flex: 1; min-height: 36px; border: 0; border-radius: 7px; font-size: 12px; font-weight: 600; color: #788079; background: transparent; cursor: pointer; }
+.receipt-format-tabs button.active { color: var(--ink); background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+.ticket-inner.thermal { width: 80mm; margin: 0 auto; }
+.ticket-inner { padding: 12px; }
+.ticket-meta { margin: 2px 0; text-align: center; color: #666; font-size: 10px; }
+.ticket-meta-small { font-size: 10px; }
+.ticket-item-block { margin: 4px 0; }
+.ticket-modifiers { color: #666; font-size: 9px; padding-left: 10px; }
+.ticket-unit-price { color: #888; font-size: 9px; text-align: right; }
+.ticket-change { font-weight: 700; color: var(--green); }
+.ticket-sheet-wrap { border: 1px dashed #bbb; border-radius: 8px; padding: 20px; background: #fff; max-width: 420px; margin: 0 auto; }
+.sheet-cut-guide { text-align: center; color: #bbb; font-size: 11px; margin: 8px 0; letter-spacing: 2px; }
+.ticket-barcode-wrap { text-align: center; margin: 12px 0 4px; }
+.ticket-barcode-svg { width: 100%; max-width: 220px; height: 38px; }
+.ticket-barcode-label { font-family: 'Courier New', monospace; font-size: 10px; letter-spacing: 2px; text-align: center; margin-top: 2px; }
+
+/* ==== CORTE Z MODAL ==== */
+.corte-z-modal { max-width: 420px; }
+
+/* ==== DAILY SALES MODAL ==== */
+.daily-sales-modal { max-width: 680px; }
+.payment-badge { padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+.payment-badge.cash { background: #dcfce7; color: #15803d; }
+.payment-badge.card { background: #dbeafe; color: #1d4ed8; }
+.payment-badge.transfer { background: #fef3c7; color: #92400e; }
+
+@media (max-width: 1100px) {
+  .setup-ticket-grid { grid-template-columns: 1fr; }
+}
+

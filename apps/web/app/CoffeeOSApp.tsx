@@ -130,17 +130,29 @@ interface Receipt {
     modifiers: { id: string; name: string; priceDelta: string }[];
   }[];
 }
-interface RecentSale {
-  id: string;
-  folio: number;
-  total: string;
+interface RecentSale extends Receipt {
   costTotal: string;
   grossProfit: string;
   grossMargin: string;
-  paymentMethod: 'cash' | 'card' | 'transfer';
-  createdAt: string;
-  items: { quantity: number }[];
 }
+
+interface TicketSettings {
+  businessName: string;
+  rfc: string;
+  address: string;
+  phone: string;
+  footerMessage: string;
+  defaultFormat: 'thermal' | 'sheet';
+}
+
+const DEFAULT_TICKET_SETTINGS: TicketSettings = {
+  businessName: 'CoffeeOS Café',
+  rfc: 'XAXX010101000',
+  address: 'Av. Principal #123, Centro',
+  phone: '55 1234 5678',
+  footerMessage: '¡Gracias por su compra! Vuelva pronto.',
+  defaultFormat: 'thermal',
+};
 interface SalesSummary {
   saleCount: number;
   total: string;
@@ -269,6 +281,132 @@ function Icon({ children }: { children: React.ReactNode }) {
   return <span className="nav-icon" aria-hidden="true">{children}</span>;
 }
 
+function CoffeeLogo({
+  size = 32,
+  monochrome = false,
+  className = '',
+}: {
+  size?: number;
+  monochrome?: boolean;
+  className?: string;
+}) {
+  if (monochrome) {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 48 48"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={className}
+        style={{ display: 'inline-block', verticalAlign: 'middle' }}
+      >
+        <path d="M16 11C16 8 18 6 18 4" stroke="#000" strokeWidth="2.5" strokeLinecap="round" />
+        <path d="M24 12C24 8 26 6 26 3" stroke="#000" strokeWidth="2.5" strokeLinecap="round" />
+        <path d="M32 11C32 8 34 6 34 4" stroke="#000" strokeWidth="2.5" strokeLinecap="round" />
+        <path
+          d="M10 16H38V28C38 34.6274 32.6274 40 26 40H22C15.3726 40 10 34.6274 10 28V16Z"
+          fill="#000"
+        />
+        <path
+          d="M38 20H40C42.2091 20 44 21.7909 44 24C44 26.2091 42.2091 28 40 28H38"
+          stroke="#000"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+        />
+        <path d="M8 44H40" stroke="#000" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 48 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      style={{ display: 'inline-block', verticalAlign: 'middle' }}
+    >
+      <defs>
+        <linearGradient id="cupGrad" x1="10" y1="16" x2="38" y2="40" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#c87b45" />
+          <stop offset="1" stopColor="#8d4a23" />
+        </linearGradient>
+        <linearGradient id="steamGrad" x1="16" y1="3" x2="34" y2="12" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#e2a172" />
+          <stop offset="1" stopColor="#c87b45" />
+        </linearGradient>
+      </defs>
+      <path d="M16 11C16 8 18 6 18 4" stroke="url(#steamGrad)" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M24 12C24 8 26 6 26 3" stroke="url(#steamGrad)" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M32 11C32 8 34 6 34 4" stroke="url(#steamGrad)" strokeWidth="2.5" strokeLinecap="round" />
+      <path
+        d="M10 16H38V28C38 34.6274 32.6274 40 26 40H22C15.3726 40 10 34.6274 10 28V16Z"
+        fill="url(#cupGrad)"
+      />
+      <path
+        d="M24 23.5C22.5 21.5 19.5 22 19.5 24C19.5 26.5 24 29.5 24 29.5C24 29.5 28.5 26.5 28.5 24C28.5 22 25.5 21.5 24 23.5Z"
+        fill="#fcf8f2"
+        fillOpacity="0.85"
+      />
+      <path
+        d="M38 20H40C42.2091 20 44 21.7909 44 24C44 26.2091 42.2091 28 40 28H38"
+        stroke="#c87b45"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+      />
+      <path d="M8 44H40" stroke="#194c3b" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function BarcodeSVG({ value }: { value: string | number }) {
+  const folioFormatted = String(value).padStart(6, '0');
+  return (
+    <div className="ticket-barcode-wrap">
+      <svg viewBox="0 0 220 38" className="ticket-barcode-svg">
+        <rect x="5" y="0" width="3" height="38" fill="#000" />
+        <rect x="11" y="0" width="2" height="38" fill="#000" />
+        <rect x="16" y="0" width="5" height="38" fill="#000" />
+        <rect x="25" y="0" width="2" height="38" fill="#000" />
+        <rect x="30" y="0" width="4" height="38" fill="#000" />
+        <rect x="37" y="0" width="1" height="38" fill="#000" />
+        <rect x="41" y="0" width="3" height="38" fill="#000" />
+        <rect x="47" y="0" width="6" height="38" fill="#000" />
+        <rect x="56" y="0" width="2" height="38" fill="#000" />
+        <rect x="61" y="0" width="4" height="38" fill="#000" />
+        <rect x="68" y="0" width="2" height="38" fill="#000" />
+        <rect x="73" y="0" width="5" height="38" fill="#000" />
+        <rect x="81" y="0" width="2" height="38" fill="#000" />
+        <rect x="86" y="0" width="3" height="38" fill="#000" />
+        <rect x="92" y="0" width="6" height="38" fill="#000" />
+        <rect x="101" y="0" width="2" height="38" fill="#000" />
+        <rect x="106" y="0" width="4" height="38" fill="#000" />
+        <rect x="113" y="0" width="1" height="38" fill="#000" />
+        <rect x="117" y="0" width="5" height="38" fill="#000" />
+        <rect x="125" y="0" width="3" height="38" fill="#000" />
+        <rect x="131" y="0" width="2" height="38" fill="#000" />
+        <rect x="136" y="0" width="4" height="38" fill="#000" />
+        <rect x="143" y="0" width="2" height="38" fill="#000" />
+        <rect x="148" y="0" width="6" height="38" fill="#000" />
+        <rect x="157" y="0" width="2" height="38" fill="#000" />
+        <rect x="162" y="0" width="3" height="38" fill="#000" />
+        <rect x="168" y="0" width="5" height="38" fill="#000" />
+        <rect x="176" y="0" width="2" height="38" fill="#000" />
+        <rect x="181" y="0" width="4" height="38" fill="#000" />
+        <rect x="188" y="0" width="3" height="38" fill="#000" />
+        <rect x="194" y="0" width="5" height="38" fill="#000" />
+        <rect x="202" y="0" width="2" height="38" fill="#000" />
+        <rect x="207" y="0" width="4" height="38" fill="#000" />
+        <rect x="214" y="0" width="3" height="38" fill="#000" />
+      </svg>
+      <div className="ticket-barcode-label">*{folioFormatted}*</div>
+    </div>
+  );
+}
+
 function blankModifierGroup(): ModifierGroupDraft {
   return {
     name: '',
@@ -350,6 +488,33 @@ export default function CoffeeOSApp() {
     description: '',
     price: '',
   });
+  const [posSearch, setPosSearch] = useState('');
+  const [showDailySales, setShowDailySales] = useState(false);
+  const [ticketFormat, setTicketFormat] = useState<'thermal' | 'sheet'>('thermal');
+  const [ticketSettings, setTicketSettings] = useState<TicketSettings>(DEFAULT_TICKET_SETTINGS);
+  const [inventorySubView, setInventorySubView] = useState<'stocks' | 'valuation'>('stocks');
+  const [printCorteZ, setPrintCorteZ] = useState<ClosedCashSession | null>(null);
+  const [setupTab, setSetupTab] = useState<'ticket' | 'branches'>('ticket');
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('coffeeos_ticket_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setTicketSettings((prev) => ({ ...prev, ...parsed }));
+        if (parsed.defaultFormat) setTicketFormat(parsed.defaultFormat);
+      }
+    } catch {}
+  }, []);
+
+  function saveTicketSettings(updated: Partial<TicketSettings>) {
+    const next = { ...ticketSettings, ...updated };
+    setTicketSettings(next);
+    try {
+      localStorage.setItem('coffeeos_ticket_settings', JSON.stringify(next));
+    } catch {}
+    setNotice({ type: 'success', text: 'Preferencias del ticket guardadas correctamente.' });
+  }
 
   const payload = useMemo(
     () => (session ? decodeToken(session.accessToken) : null),
@@ -1453,7 +1618,7 @@ export default function CoffeeOSApp() {
     return (
       <main className="coffee-auth">
         <section className="coffee-auth-hero">
-          <div className="coffee-logo"><span>C</span> CoffeeOS</div>
+          <div className="coffee-logo"><CoffeeLogo size={38} /> <span>CoffeeOS</span></div>
           <div>
             <small>PUNTO DE VENTA PARA NEGOCIOS REALES</small>
             <h1>Vende rápido.<br />Controla cada ingrediente.</h1>
@@ -1546,15 +1711,22 @@ export default function CoffeeOSApp() {
     );
   }
 
+  const searchLower = posSearch.trim().toLowerCase();
   const visibleProducts = catalog
     .filter((category) => !categoryFilter || category.id === categoryFilter)
-    .flatMap((category) => category.products);
+    .flatMap((category) => category.products)
+    .filter(
+      (product) =>
+        !searchLower ||
+        product.name.toLowerCase().includes(searchLower) ||
+        (product.description && product.description.toLowerCase().includes(searchLower)),
+    );
   const lowStock = stocks.filter((stock) => Number(stock.quantity) <= Number(stock.minQuantity));
 
   return (
     <main className="coffee-app">
       <aside className="coffee-sidebar">
-        <div className="coffee-logo"><span>C</span> CoffeeOS</div>
+        <div className="coffee-logo"><CoffeeLogo size={32} /> <span>CoffeeOS</span></div>
         <div className="business-chip"><small>NEGOCIO</small><strong>{session.tenantSlug}</strong></div>
         <nav>
           {can('sales.create') && <button className={view === 'pos' ? 'active' : ''} onClick={() => setView('pos')}><Icon>▦</Icon>Punto de venta</button>}
@@ -1596,34 +1768,333 @@ export default function CoffeeOSApp() {
 
           {view === 'setup' && (
             <div className="page-stack">
-              <div className="intro"><div><small>PASO A PASO</small><h2>Prepara el lugar donde vas a vender</h2><p>Una empresa contiene sucursales; cada sucursal tiene una o más terminales de venta.</p></div></div>
-              <div className="three-cards">
-                <form className="panel coffee-form" onSubmit={submitCompany}>
-                  <span className="step">1</span><h3>Empresa</h3>
-                  <label>Nombre<input name="name" placeholder="Cafetería Central" required /></label>
-                  <button className="coffee-primary compact" disabled={busy}>Crear empresa</button>
-                </form>
-                <form className="panel coffee-form" onSubmit={submitBranch}>
-                  <span className="step">2</span><h3>Sucursal</h3>
-                  <label>Empresa<select value={companyId} onChange={(event) => setCompanyId(event.target.value)} required><option value="">Selecciona</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
-                  <label>Nombre<input name="name" placeholder="Sucursal Centro" required /></label>
-                  <label>Dirección<input name="address" /></label>
-                  <button className="coffee-primary compact" disabled={busy || !companyId}>Crear sucursal</button>
-                </form>
-                <form className="panel coffee-form" onSubmit={submitTerminal}>
-                  <span className="step">3</span><h3>Terminal</h3>
-                  <label>Sucursal<select value={branchId} onChange={(event) => setBranchId(event.target.value)} required><option value="">Selecciona</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
-                  <label>Nombre<input name="name" placeholder="Caja principal" required /></label>
-                  <label>Código<input name="code" placeholder="CAJA-01" required /></label>
-                  <button className="coffee-primary compact" disabled={busy || !branchId}>Crear terminal</button>
-                </form>
+              <div className="intro">
+                <div>
+                  <small>AJUSTES DEL SISTEMA</small>
+                  <h2>Configuración de Cafetería y Tickets</h2>
+                  <p>Personaliza los datos impresos en los tickets de venta, define el formato de impresión y administra sucursales y terminales.</p>
+                </div>
               </div>
+
+              <div className="subview-tabs">
+                <button
+                  type="button"
+                  className={setupTab === 'ticket' ? 'active' : ''}
+                  onClick={() => setSetupTab('ticket')}
+                >
+                  🧾 Datos del Ticket e Impresión
+                </button>
+                <button
+                  type="button"
+                  className={setupTab === 'branches' ? 'active' : ''}
+                  onClick={() => setSetupTab('branches')}
+                >
+                  🏢 Sucursales y Terminales ({branches.length} / {terminals.length})
+                </button>
+              </div>
+
+              {setupTab === 'ticket' && (
+                <div className="setup-ticket-grid">
+                  <form
+                    className="panel coffee-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const form = new FormData(e.currentTarget);
+                      saveTicketSettings({
+                        businessName: String(form.get('businessName') || ''),
+                        rfc: String(form.get('rfc') || ''),
+                        address: String(form.get('address') || ''),
+                        phone: String(form.get('phone') || ''),
+                        footerMessage: String(form.get('footerMessage') || ''),
+                        defaultFormat: form.get('defaultFormat') as 'thermal' | 'sheet',
+                      });
+                    }}
+                  >
+                    <h3>Datos para el Ticket Impreso</h3>
+                    <p>Estos datos se imprimen en el encabezado y pie de cada ticket térmico o en hoja carta.</p>
+                    <label>
+                      Nombre comercial de la cafetería
+                      <input
+                        name="businessName"
+                        defaultValue={ticketSettings.businessName}
+                        placeholder="Ej. CoffeeOS Café Gourmet"
+                        required
+                      />
+                    </label>
+                    <div className="form-row">
+                      <label>
+                        RFC / Identificación fiscal
+                        <input
+                          name="rfc"
+                          defaultValue={ticketSettings.rfc}
+                          placeholder="XAXX010101000"
+                        />
+                      </label>
+                      <label>
+                        Teléfono de contacto
+                        <input
+                          name="phone"
+                          defaultValue={ticketSettings.phone}
+                          placeholder="55 1234 5678"
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      Dirección comercial
+                      <input
+                        name="address"
+                        defaultValue={ticketSettings.address}
+                        placeholder="Av. Principal #123, Col. Centro"
+                      />
+                    </label>
+                    <label>
+                      Mensaje de agradecimiento (Pie del ticket)
+                      <input
+                        name="footerMessage"
+                        defaultValue={ticketSettings.footerMessage}
+                        placeholder="¡Gracias por su compra! Vuelva pronto."
+                      />
+                    </label>
+                    <label>
+                      Formato de impresión predeterminado
+                      <select name="defaultFormat" defaultValue={ticketSettings.defaultFormat}>
+                        <option value="thermal">📠 Rollo Térmico (80mm / 58mm POS)</option>
+                        <option value="sheet">📄 Hoja Normal (Carta / A4 para pruebas)</option>
+                      </select>
+                      <small>En la ventana del ticket podrás alternar entre rollo térmico y hoja carta en cualquier momento.</small>
+                    </label>
+                    <button className="coffee-primary" disabled={busy}>
+                      Guardar configuración del ticket
+                    </button>
+                  </form>
+
+                  <div className="panel ticket-live-preview">
+                    <div className="panel-title">
+                      <h3>Vista previa del ticket</h3>
+                      <span className="count-badge">Diseño en vivo</span>
+                    </div>
+                    <div className="sample-ticket-preview">
+                      <div className="ticket-header-logo">
+                        <CoffeeLogo size={36} monochrome={true} />
+                      </div>
+                      <div className="sample-ticket-name">{ticketSettings.businessName || 'CoffeeOS Café'}</div>
+                      <div className="sample-ticket-muted">RFC: {ticketSettings.rfc || 'XAXX010101000'}</div>
+                      <div className="sample-ticket-muted">{ticketSettings.address || 'Av. Principal #123, Centro'}</div>
+                      <div className="sample-ticket-muted">Tel: {ticketSettings.phone || '55 1234 5678'}</div>
+                      <hr className="ticket-divider" />
+                      <div className="sample-ticket-row"><span>Ticket #000101</span><span>{new Date().toLocaleDateString('es-MX')}</span></div>
+                      <div className="sample-ticket-row"><span>Caja: Principal</span><span>Turno: Abierto</span></div>
+                      <hr className="ticket-divider" />
+                      <div className="sample-ticket-row"><span>1 × Americano Especial 12oz</span><b>$45.00</b></div>
+                      <div className="sample-ticket-sub">+ Jarabe Avellana (+$10.00)</div>
+                      <div className="sample-ticket-row"><span>1 × Muffin Chocolate</span><b>$38.00</b></div>
+                      <hr className="ticket-divider" />
+                      <div className="sample-ticket-row"><span>Subtotal</span><b>$93.00</b></div>
+                      <div className="sample-ticket-row total"><span>TOTAL</span><b>$93.00</b></div>
+                      <div className="sample-ticket-row"><span>Método</span><span>Efectivo</span></div>
+                      <div className="sample-ticket-row"><span>Recibido</span><span>$100.00</span></div>
+                      <div className="sample-ticket-row"><span>Cambio</span><b>$7.00</b></div>
+                      <div className="ticket-barcode-wrap">
+                        <BarcodeSVG value="101" />
+                      </div>
+                      <div className="sample-ticket-footer">{ticketSettings.footerMessage}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {setupTab === 'branches' && (
+                <>
+                  <div className="panel" style={{ padding: '18px 22px', marginBottom: '20px' }}>
+                    <div className="panel-title">
+                      <h3>Estructura actual del negocio</h3>
+                      <span>{companies.length} empresa(s) · {branches.length} sucursal(es) · {terminals.length} terminal(es)</span>
+                    </div>
+                    <div className="structure-summary-grid">
+                      {companies.map((c) => (
+                        <div key={c.id} className="structure-card">
+                          <small>EMPRESA</small>
+                          <strong>{c.name}</strong>
+                          <div className="structure-branches">
+                            {branches.filter((b) => b.companyId === c.id).map((b) => (
+                              <div key={b.id} className="structure-branch-item">
+                                <span>📍 {b.name}</span>
+                                <div className="structure-terminals">
+                                  {terminals.filter((t) => t.branchId === b.id).map((t) => (
+                                    <span key={t.id} className="terminal-pill">💻 {t.name}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="three-cards">
+                    <form className="panel coffee-form" onSubmit={submitCompany}>
+                      <span className="step">1</span><h3>Empresa</h3>
+                      <label>Nombre<input name="name" placeholder="Cafetería Central" required /></label>
+                      <button className="coffee-primary compact" disabled={busy}>Crear empresa</button>
+                    </form>
+                    <form className="panel coffee-form" onSubmit={submitBranch}>
+                      <span className="step">2</span><h3>Sucursal</h3>
+                      <label>Empresa<select value={companyId} onChange={(event) => setCompanyId(event.target.value)} required><option value="">Selecciona</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
+                      <label>Nombre<input name="name" placeholder="Sucursal Centro" required /></label>
+                      <label>Dirección<input name="address" /></label>
+                      <button className="coffee-primary compact" disabled={busy || !companyId}>Crear sucursal</button>
+                    </form>
+                    <form className="panel coffee-form" onSubmit={submitTerminal}>
+                      <span className="step">3</span><h3>Terminal</h3>
+                      <label>Sucursal<select value={branchId} onChange={(event) => setBranchId(event.target.value)} required><option value="">Selecciona</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
+                      <label>Nombre<input name="name" placeholder="Caja principal" required /></label>
+                      <label>Código<input name="code" placeholder="CAJA-01" required /></label>
+                      <button className="coffee-primary compact" disabled={busy || !branchId}>Crear terminal</button>
+                    </form>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
           {view === 'inventory' && branchId && (
             <div className="page-stack">
-              <div className="intro"><div><small>CONTROL DE EXISTENCIAS</small><h2>Ingredientes y avisos</h2><p>Usa piezas, gramos, mililitros o la unidad que mejor describa cada ingrediente.</p></div><span className={`alert-pill ${lowStock.length ? 'danger' : ''}`}>{lowStock.length} avisos</span></div>
+              <div className="intro">
+                <div>
+                  <small>CONTROL DE EXISTENCIAS Y COSTOS</small>
+                  <h2>Inventario y Auditoría</h2>
+                  <p>Gestiona existencias en tiempo real, fórmulas de preparación y genera reportes valorizados imprimibles.</p>
+                </div>
+                <span className={`alert-pill ${lowStock.length ? 'danger' : ''}`}>{lowStock.length} avisos de stock</span>
+              </div>
+
+              <div className="subview-tabs">
+                <button
+                  type="button"
+                  className={inventorySubView === 'stocks' ? 'active' : ''}
+                  onClick={() => setInventorySubView('stocks')}
+                >
+                  📦 Existencias y Movimientos ({stocks.length})
+                </button>
+                <button
+                  type="button"
+                  className={inventorySubView === 'valuation' ? 'active' : ''}
+                  onClick={() => setInventorySubView('valuation')}
+                >
+                  📊 Reporte Valorizado Imprimible
+                </button>
+              </div>
+
+              {inventorySubView === 'valuation' && (
+                <div className="valuation-report-container">
+                  <div className="valuation-screen-actions">
+                    <div className="report-kpis">
+                      <div className="panel">
+                        <small>INSUMOS REGISTRADOS</small>
+                        <strong>{stocks.length}</strong>
+                        <span>Total de materias primas</span>
+                      </div>
+                      <div className="panel">
+                        <small>VALOR TOTAL DEL INVENTARIO</small>
+                        <strong>{money(stocks.reduce((acc, s) => acc + (Number(s.quantity) * Number(s.averageUnitCost || 0)), 0))}</strong>
+                        <span>Costo promedio ponderado</span>
+                      </div>
+                      <div className="panel">
+                        <small>INSUMOS BAJO MÍNIMO</small>
+                        <strong className={lowStock.length > 0 ? 'text-danger' : ''}>{lowStock.length}</strong>
+                        <span>Requieren resurtido urgente</span>
+                      </div>
+                    </div>
+                    <div className="valuation-action-bar">
+                      <button
+                        type="button"
+                        className="coffee-primary"
+                        onClick={() => window.print()}
+                      >
+                        🖨️ Imprimir Reporte de Inventario
+                      </button>
+                    </div>
+                  </div>
+
+                  <div id="print-inventory-report" className="printable-report-sheet">
+                    <header className="report-print-header">
+                      <div className="report-brand-row">
+                        <CoffeeLogo size={42} monochrome={true} />
+                        <div>
+                          <h2>{ticketSettings.businessName || 'CoffeeOS Café'}</h2>
+                          <p>RFC: {ticketSettings.rfc} · Tel: {ticketSettings.phone}</p>
+                          <small>{ticketSettings.address}</small>
+                        </div>
+                      </div>
+                      <div className="report-title-badge">
+                        <h1>REPORTE DE AUDITORÍA Y VALORACIÓN DE INVENTARIO</h1>
+                        <p>Sucursal: <strong>{branches.find((b) => b.id === branchId)?.name || 'Sucursal Principal'}</strong> · Emitido: <strong>{new Date().toLocaleString('es-MX')}</strong></p>
+                      </div>
+                    </header>
+
+                    <table className="printable-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Insumo / Materia Prima</th>
+                          <th>Unidad</th>
+                          <th className="num">Existencia</th>
+                          <th className="num">Mínimo</th>
+                          <th className="num">Costo Unit. Promedio</th>
+                          <th className="num">Valor Total</th>
+                          <th>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stocks.map((stock, idx) => {
+                          const isLow = Number(stock.quantity) <= Number(stock.minQuantity);
+                          const totalVal = Number(stock.quantity) * Number(stock.averageUnitCost || 0);
+                          return (
+                            <tr key={stock.id} className={isLow ? 'row-alert' : ''}>
+                              <td>{idx + 1}</td>
+                              <td><strong>{stock.ingredient.name}</strong></td>
+                              <td>{stock.ingredient.unit}</td>
+                              <td className="num">{Number(stock.quantity).toLocaleString('es-MX', { maximumFractionDigits: 3 })}</td>
+                              <td className="num">{Number(stock.minQuantity).toLocaleString('es-MX', { maximumFractionDigits: 3 })}</td>
+                              <td className="num">{money(stock.averageUnitCost)}</td>
+                              <td className="num"><strong>{money(totalVal)}</strong></td>
+                              <td>
+                                <span className={`status-tag ${isLow ? 'danger' : 'ok'}`}>
+                                  {isLow ? '⚠️ Reabastecer' : '✓ Óptimo'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: 'right' }}><strong>VALOR TOTAL DEL INVENTARIO:</strong></td>
+                          <td className="num"><strong>{money(stocks.reduce((acc, s) => acc + (Number(s.quantity) * Number(s.averageUnitCost || 0)), 0))}</strong></td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+
+                    <div className="report-signature-block">
+                      <div className="signature-box">
+                        <div className="sig-line"></div>
+                        <strong>Responsable de Inventario</strong>
+                        <p>Nombre y firma de quien realizó el conteo</p>
+                      </div>
+                      <div className="signature-box">
+                        <div className="sig-line"></div>
+                        <strong>Administrador / Gerente</strong>
+                        <p>Aprobación y sello de auditoría</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {inventorySubView === 'stocks' && (
+                <>
               <div className="inventory-layout">
                 <form className="panel coffee-form" onSubmit={submitIngredient}>
                   <h3>Nuevo ingrediente</h3>
@@ -1864,10 +2335,12 @@ export default function CoffeeOSApp() {
                   </form>
                 </div>
               )}
+                </>
+              )}
             </div>
           )}
 
-          {view === 'inventory' && branchId && (
+          {view === 'inventory' && branchId && inventorySubView === 'stocks' && (
             <div className="page-stack">
               <div className="panel table-panel">
                 <div className="panel-title"><h3>Historial de movimientos</h3><span>{inventoryMovements.length} recientes</span></div>
@@ -1936,8 +2409,93 @@ export default function CoffeeOSApp() {
                   <form className="panel coffee-form" onSubmit={closeCash}><h3>Finalizar día</h3><p>Cuenta todo el efectivo físico antes de cerrar.</p><label>Efectivo contado<input name="countedCash" type="number" min="0" step="0.01" required /></label><button className="danger-button" disabled={busy}>Cerrar caja y ver resumen</button></form>
                 </div>
               )}
-              {closeSummary && <div className="panel close-summary"><h3>Resumen del cierre</h3><div><span><small>Ventas</small><b>{closeSummary.saleCount}</b></span><span><small>Total vendido</small><b>{money(closeSummary.salesTotal)}</b></span><span><small>Efectivo</small><b>{money(closeSummary.cashSalesTotal)}</b></span><span><small>Tarjeta</small><b>{money(closeSummary.cardSalesTotal)}</b></span><span><small>Transferencia</small><b>{money(closeSummary.transferSalesTotal)}</b></span><span><small>Efectivo esperado</small><b>{money(closeSummary.expectedCash)}</b></span><span><small>Diferencia</small><b className={Number(closeSummary.difference) < 0 ? 'negative' : ''}>{money(closeSummary.difference)}</b></span></div><h4>Necesitas reponer</h4>{closeSummary.lowStock.length ? closeSummary.lowStock.map((stock) => <p key={stock.id}>{stock.ingredient.name}: quedan {Number(stock.quantity)} {stock.ingredient.unit}</p>) : <p>Todo el inventario está por encima de sus mínimos.</p>}</div>}
-              {salesSummary && <div className="panel close-summary"><h3>Resumen de ventas</h3><div><span><small>Ventas</small><b>{salesSummary.saleCount}</b></span><span><small>Total general</small><b>{money(salesSummary.total)}</b></span><span><small>Costo</small><b>{money(salesSummary.costTotal)}</b></span><span><small>Utilidad bruta</small><b>{money(salesSummary.grossProfit)}</b></span><span><small>Margen</small><b>{Number(salesSummary.grossMargin).toFixed(2)}%</b></span><span><small>Efectivo</small><b>{money(salesSummary.cash)}</b></span><span><small>Tarjeta</small><b>{money(salesSummary.card)}</b></span><span><small>Transferencia</small><b>{money(salesSummary.transfer)}</b></span></div><h3>Ventas recientes</h3>{recentSales.length === 0 ? <p>Todavía no hay ventas en esta caja.</p> : recentSales.map((sale) => <article className="recent-sale" key={sale.id}><div><strong>Venta #{sale.folio}</strong><small>{new Date(sale.createdAt).toLocaleString('es-MX')} · {sale.items.reduce((sum, item) => sum + item.quantity, 0)} producto(s) · utilidad {money(sale.grossProfit)} ({Number(sale.grossMargin).toFixed(2)}%)</small></div><b>{money(sale.total)}</b><span>{paymentLabel(sale.paymentMethod)}</span></article>)}</div>}
+              {closeSummary && (
+                <div className="panel close-summary">
+                  <div className="panel-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3>Resumen del cierre de turno</h3>
+                    <button
+                      type="button"
+                      className="coffee-primary compact"
+                      onClick={() =>
+                        setPrintCorteZ({
+                          id: 'cierre-actual',
+                          openingAmount: '0',
+                          status: 'closed',
+                          openedAt: new Date().toISOString(),
+                          closedAt: new Date().toISOString(),
+                          branch: branches.find((b) => b.id === branchId) || { id: branchId, name: 'Sucursal', companyId: '' },
+                          terminal: terminals.find((t) => t.id === terminalId) || { id: terminalId, name: 'Terminal', branchId },
+                          expectedCash: closeSummary.expectedCash,
+                          countedCash: closeSummary.countedCash,
+                          difference: closeSummary.difference,
+                          salesTotal: closeSummary.salesTotal,
+                          saleCount: closeSummary.saleCount,
+                        })
+                      }
+                    >
+                      🖨️ Imprimir Corte Z
+                    </button>
+                  </div>
+                  <div>
+                    <span><small>Ventas</small><b>{closeSummary.saleCount}</b></span>
+                    <span><small>Total vendido</small><b>{money(closeSummary.salesTotal)}</b></span>
+                    <span><small>Efectivo</small><b>{money(closeSummary.cashSalesTotal)}</b></span>
+                    <span><small>Tarjeta</small><b>{money(closeSummary.cardSalesTotal)}</b></span>
+                    <span><small>Transferencia</small><b>{money(closeSummary.transferSalesTotal)}</b></span>
+                    <span><small>Efectivo esperado</small><b>{money(closeSummary.expectedCash)}</b></span>
+                    <span><small>Diferencia</small><b className={Number(closeSummary.difference) < 0 ? 'negative' : ''}>{money(closeSummary.difference)}</b></span>
+                  </div>
+                  <h4>Necesitas reponer</h4>
+                  {closeSummary.lowStock.length ? (
+                    closeSummary.lowStock.map((stock) => (
+                      <p key={stock.id}>{stock.ingredient.name}: quedan {Number(stock.quantity)} {stock.ingredient.unit}</p>
+                    ))
+                  ) : (
+                    <p>Todo el inventario está por encima de sus mínimos.</p>
+                  )}
+                </div>
+              )}
+              {salesSummary && (
+                <div className="panel close-summary">
+                  <h3>Resumen de ventas</h3>
+                  <div>
+                    <span><small>Ventas</small><b>{salesSummary.saleCount}</b></span>
+                    <span><small>Total general</small><b>{money(salesSummary.total)}</b></span>
+                    <span><small>Costo</small><b>{money(salesSummary.costTotal)}</b></span>
+                    <span><small>Utilidad bruta</small><b>{money(salesSummary.grossProfit)}</b></span>
+                    <span><small>Margen</small><b>{Number(salesSummary.grossMargin).toFixed(2)}%</b></span>
+                    <span><small>Efectivo</small><b>{money(salesSummary.cash)}</b></span>
+                    <span><small>Tarjeta</small><b>{money(salesSummary.card)}</b></span>
+                    <span><small>Transferencia</small><b>{money(salesSummary.transfer)}</b></span>
+                  </div>
+                  <h3>Ventas recientes</h3>
+                  {recentSales.length === 0 ? (
+                    <p>Todavía no hay ventas en esta caja.</p>
+                  ) : (
+                    recentSales.map((sale) => (
+                      <article className="recent-sale" key={sale.id}>
+                        <div>
+                          <strong>Venta #{sale.folio}</strong>
+                          <small>
+                            {new Date(sale.createdAt).toLocaleString('es-MX')} · {sale.items.reduce((sum, item) => sum + item.quantity, 0)} producto(s) · utilidad {money(sale.grossProfit)} ({Number(sale.grossMargin).toFixed(2)}%)
+                          </small>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <b>{money(sale.total)}</b>
+                          <span>{paymentLabel(sale.paymentMethod)}</span>
+                          <button
+                            type="button"
+                            className="coffee-link compact"
+                            onClick={() => setReceipt(sale)}
+                          >
+                            🖨️ Ver Ticket
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1978,22 +2536,250 @@ export default function CoffeeOSApp() {
           {view === 'cash' && terminalId && cashHistory.length > 0 && (
             <div className="panel close-summary">
               <h3>Historial de cortes</h3>
-              {cashHistory.map((closed) => <article className="recent-sale" key={closed.id}><div><strong>{closed.terminal.name}</strong><small>{new Date(closed.closedAt).toLocaleString('es-MX')} · {closed.saleCount ?? 0} venta(s)</small></div><b>{money(closed.salesTotal ?? 0)}</b><span>Diferencia {money(closed.difference ?? 0)}</span></article>)}
+              {cashHistory.map((closed) => (
+                <article className="recent-sale" key={closed.id}>
+                  <div>
+                    <strong>{closed.terminal.name}</strong>
+                    <small>{new Date(closed.closedAt).toLocaleString('es-MX')} · {closed.saleCount ?? 0} venta(s)</small>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <b>{money(closed.salesTotal ?? 0)}</b>
+                    <span>Diferencia {money(closed.difference ?? 0)}</span>
+                    <button
+                      type="button"
+                      className="coffee-link compact"
+                      onClick={() => setPrintCorteZ(closed)}
+                    >
+                      🖨️ Imprimir Corte Z
+                    </button>
+                  </div>
+                </article>
+              ))}
             </div>
           )}
 
           {view === 'pos' && branchId && terminalId && (
             <div className="pos-layout">
               <section className="product-area">
-                <div className="category-tabs"><button className={!categoryFilter ? 'active' : ''} onClick={() => setCategoryFilter('')}>Todos</button>{catalog.map((category) => <button key={category.id} className={categoryFilter === category.id ? 'active' : ''} onClick={() => setCategoryFilter(category.id)}><i style={{ background: category.color }} />{category.name}</button>)}</div>
-                {!cashSession && <div className="pos-warning"><strong>La caja está cerrada.</strong><span>Abre la caja antes de cobrar.</span><button onClick={() => setView('cash')}>Abrir caja</button></div>}
-                <div className="product-grid">{visibleProducts.map((product) => <button className="product-card" key={product.id} onClick={() => beginAddProduct(product)}><span>{product.name.slice(0, 2).toUpperCase()}</span><strong>{product.name}</strong><small>{product.description || 'Producto del menú'}</small><b>{money(product.price)}</b>{product.modifierGroups.length > 0 && <em>Personalizable</em>}</button>)}{visibleProducts.length === 0 && <div className="blank-state large"><h3>Tu menú todavía está vacío</h3><p>Agrega inventario, categorías y productos para comenzar.</p><button className="coffee-primary compact" onClick={() => setView('catalog')}>Configurar menú</button></div>}</div>
+                <div className="pos-top-actions">
+                  <div className="pos-search-box">
+                    <span className="search-icon">🔍</span>
+                    <input
+                      type="text"
+                      className="pos-search-input"
+                      placeholder="Buscar producto por nombre o descripción..."
+                      value={posSearch}
+                      onChange={(e) => setPosSearch(e.target.value)}
+                    />
+                    {posSearch && (
+                      <button
+                        type="button"
+                        className="search-clear-btn"
+                        onClick={() => setPosSearch('')}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  <div className="pos-quick-buttons">
+                    <button
+                      type="button"
+                      className="pos-action-btn highlight"
+                      onClick={() => setShowDailySales(true)}
+                    >
+                      📋 Ventas de hoy <b>({recentSales.length})</b> · <span>{money(salesSummary?.total ?? 0)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="pos-action-btn"
+                      disabled={recentSales.length === 0}
+                      onClick={() => {
+                        if (recentSales[0]) setReceipt(recentSales[0]);
+                      }}
+                    >
+                      🖨️ Último ticket {recentSales[0] ? `(#${recentSales[0].folio})` : ''}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="category-tabs">
+                  <button
+                    className={!categoryFilter ? 'active' : ''}
+                    onClick={() => setCategoryFilter('')}
+                  >
+                    Todos ({catalog.reduce((s, c) => s + c.products.length, 0)})
+                  </button>
+                  {catalog.map((category) => (
+                    <button
+                      key={category.id}
+                      className={categoryFilter === category.id ? 'active' : ''}
+                      onClick={() => setCategoryFilter(category.id)}
+                    >
+                      <i style={{ background: category.color }} />
+                      {category.name} ({category.products.length})
+                    </button>
+                  ))}
+                </div>
+
+                {!cashSession && (
+                  <div className="pos-warning">
+                    <strong>La caja está cerrada.</strong>
+                    <span>Abre la caja antes de cobrar para registrar el turno correctamente.</span>
+                    <button onClick={() => setView('cash')}>Abrir caja</button>
+                  </div>
+                )}
+
+                <div className="product-grid">
+                  {visibleProducts.map((product) => {
+                    const category = catalog.find((c) =>
+                      c.products.some((p) => p.id === product.id),
+                    );
+                    return (
+                      <button
+                        className="product-card touch-card"
+                        key={product.id}
+                        onClick={() => beginAddProduct(product)}
+                      >
+                        <div
+                          className="product-card-top-strip"
+                          style={{ background: category?.color || '#c87b45' }}
+                        />
+                        <div className="product-card-body">
+                          <strong>{product.name}</strong>
+                          <small>{product.description || 'Producto disponible'}</small>
+                          <div className="product-card-footer">
+                            <b className="product-price-tag">{money(product.price)}</b>
+                            {product.modifierGroups.length > 0 && (
+                              <span className="customizable-badge">✨ Personalizable</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {visibleProducts.length === 0 && (
+                    <div className="blank-state large">
+                      <h3>{posSearch ? `No hay productos que coincidan con “${posSearch}”` : 'Tu menú todavía está vacío'}</h3>
+                      <p>{posSearch ? 'Intenta con otro término o limpia el buscador.' : 'Agrega inventario, categorías y productos para comenzar.'}</p>
+                      {posSearch ? (
+                        <button className="coffee-link compact" onClick={() => setPosSearch('')}>Borrar búsqueda</button>
+                      ) : (
+                        <button className="coffee-primary compact" onClick={() => setView('catalog')}>Configurar menú</button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </section>
-              <aside className="cart-panel">
-                <div className="cart-title"><div><small>VENTA ACTUAL</small><h2>Nueva venta</h2></div><button onClick={() => setCart([])}>Limpiar</button></div>
-                <div className="cart-lines">{cart.map((line) => <article key={line.key}><div><strong>{line.product.name}</strong><small>{line.options.map((option) => option.name).join(', ') || 'Sin extras'}</small><span>{money(Number(line.product.price) + line.options.reduce((sum, option) => sum + Number(option.priceDelta), 0))} c/u</span></div><div className="quantity-control"><button onClick={() => setCart((lines) => lines.flatMap((item) => item.key === line.key ? item.quantity === 1 ? [] : [{ ...item, quantity: item.quantity - 1 }] : [item]))}>−</button><b>{line.quantity}</b><button onClick={() => setCart((lines) => lines.map((item) => item.key === line.key ? { ...item, quantity: item.quantity + 1 } : item))}>+</button></div></article>)}{cart.length === 0 && <div className="blank-state">Selecciona un producto para iniciar.</div>}</div>
-                <div className="cart-total"><span>Total</span><strong>{money(cartTotal)}</strong></div>
-                <button className="coffee-primary charge-button" disabled={busy || cart.length === 0 || !cashSession} onClick={beginPayment}>Pagar {money(cartTotal)}</button>
+
+              <aside className="cart-panel modern-cart">
+                <div className="cart-title">
+                  <div>
+                    <small>ORDEN ACTUAL</small>
+                    <h2>Carrito ({cart.reduce((s, i) => s + i.quantity, 0)})</h2>
+                  </div>
+                  {cart.length > 0 && (
+                    <button
+                      type="button"
+                      className="cart-clear-btn"
+                      onClick={() => setCart([])}
+                    >
+                      Vaciar
+                    </button>
+                  )}
+                </div>
+
+                <div className="cart-lines">
+                  {cart.map((line) => {
+                    const unitPrice =
+                      Number(line.product.price) +
+                      line.options.reduce((sum, opt) => sum + Number(opt.priceDelta), 0);
+                    const lineSubtotal = unitPrice * line.quantity;
+                    return (
+                      <article key={line.key} className="cart-item-row">
+                        <div className="cart-item-info">
+                          <div className="cart-item-header">
+                            <strong>{line.product.name}</strong>
+                            <button
+                              type="button"
+                              className="cart-item-remove-btn"
+                              title="Quitar producto"
+                              onClick={() => setCart((lines) => lines.filter((i) => i.key !== line.key))}
+                            >
+                              ×
+                            </button>
+                          </div>
+                          {line.options.length > 0 && (
+                            <small className="cart-item-modifiers">
+                              {line.options.map((option) => option.name).join(', ')}
+                            </small>
+                          )}
+                          <div className="cart-item-pricing">
+                            <span>{money(unitPrice)} c/u</span>
+                            <b>{money(lineSubtotal)}</b>
+                          </div>
+                        </div>
+                        <div className="quantity-control">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCart((lines) =>
+                                lines.flatMap((item) =>
+                                  item.key === line.key
+                                    ? item.quantity === 1
+                                      ? []
+                                      : [{ ...item, quantity: item.quantity - 1 }]
+                                    : [item],
+                                ),
+                              )
+                            }
+                          >
+                            −
+                          </button>
+                          <b>{line.quantity}</b>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCart((lines) =>
+                                lines.map((item) =>
+                                  item.key === line.key
+                                    ? { ...item, quantity: item.quantity + 1 }
+                                    : item,
+                                ),
+                              )
+                            }
+                          >
+                            +
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {cart.length === 0 && (
+                    <div className="blank-state">
+                      <p>El carrito está vacío.</p>
+                      <small>Toca cualquier producto del menú para comenzar la venta.</small>
+                    </div>
+                  )}
+                </div>
+
+                <div className="cart-summary-box">
+                  <div className="cart-subtotal-row">
+                    <span>Subtotal</span>
+                    <b>{money(cartTotal)}</b>
+                  </div>
+                  <div className="cart-total-banner">
+                    <span>TOTAL A PAGAR</span>
+                    <strong>{money(cartTotal)}</strong>
+                  </div>
+                </div>
+
+                <button
+                  className="coffee-primary charge-button touch-charge"
+                  disabled={busy || cart.length === 0 || !cashSession}
+                  onClick={beginPayment}
+                >
+                  💳 COBRAR {money(cartTotal)}
+                </button>
               </aside>
             </div>
           )}
@@ -2018,7 +2804,160 @@ export default function CoffeeOSApp() {
 
       {paymentOpen && <div className="modal-backdrop"><div className="modifier-modal payment-modal"><button className="modal-close" disabled={busy} onClick={() => setPaymentOpen(false)}>×</button><small>FINALIZAR VENTA</small><h2>Pagar {money(cartTotal)}</h2><p>Selecciona cómo pagará el cliente.</p><fieldset className="payment-methods"><legend>Método de pago</legend><div><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} /> Efectivo</label><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} /> Tarjeta</label><label><input type="radio" name="paymentMethod" checked={paymentMethod === 'transfer'} onChange={() => setPaymentMethod('transfer')} /> Transferencia</label></div></fieldset>{paymentMethod === 'cash' && <><label className="cash-input">Efectivo recibido<input autoFocus type="number" min="0" step="0.01" value={cashReceived} onChange={(event) => setCashReceived(event.target.value)} placeholder="$0.00" /></label><div className="change-preview"><span>Cambio</span><b>{money(Math.max(0, Number(cashReceived || 0) - cartTotal))}</b></div></>}<div className="payment-actions"><button type="button" className="coffee-link" disabled={busy} onClick={() => setPaymentOpen(false)}>Cancelar</button><button type="button" className="coffee-primary" disabled={busy || (paymentMethod === 'cash' && Number(cashReceived) < cartTotal)} onClick={charge}>{busy ? 'Procesando…' : 'Confirmar pago'}</button></div></div></div>}
 
-      {receipt && <div className="modal-backdrop"><div className="receipt-modal"><div id="print-ticket"><div className="ticket-brand">CoffeeOS</div><h2>Ticket #{receipt.folio}</h2><p>{receipt.branch.name} · {receipt.terminal.name}</p><p>{new Date(receipt.createdAt).toLocaleString('es-MX')}</p><hr />{receipt.items.map((item) => <div className="ticket-line" key={item.id}><span>{item.quantity} × {item.productName}<small>{item.modifiers.map((modifier) => modifier.name).join(', ')}</small></span><b>{money(item.subtotal)}</b></div>)}<hr /><div className="ticket-line"><span>Subtotal</span><b>{money(receipt.subtotal)}</b></div><div className="ticket-total"><span>Total</span><b>{money(receipt.total)}</b></div><div className="ticket-line"><span>Método de pago</span><b>{paymentLabel(receipt.paymentMethod)}</b></div>{receipt.paymentMethod === 'cash' && <><div className="ticket-line"><span>Efectivo recibido</span><b>{money(receipt.cashReceived)}</b></div><div className="ticket-line"><span>Cambio</span><b>{money(receipt.changeAmount)}</b></div></>}<p className="ticket-thanks">Gracias por tu compra</p></div><div className="receipt-actions"><button className="coffee-primary" onClick={() => window.print()}>Imprimir ticket</button><button className="coffee-link" onClick={() => setReceipt(null)}>Nueva venta</button></div></div></div>}
+      {/* ── TICKET DUAL FORMATO ─────────────────────────────── */}
+      {receipt && (
+        <div className="modal-backdrop">
+          <div className="receipt-modal">
+            <div className="receipt-format-tabs">
+              <button className={ticketFormat === 'thermal' ? 'active' : ''} onClick={() => setTicketFormat('thermal')}>📠 Rollo Térmico (80mm)</button>
+              <button className={ticketFormat === 'sheet' ? 'active' : ''} onClick={() => setTicketFormat('sheet')}>📄 Hoja Normal (Carta)</button>
+            </div>
+            <div id="print-ticket" className={ticketFormat === 'sheet' ? 'ticket-sheet-wrap' : ''}>
+              {ticketFormat === 'sheet' && <div className="sheet-cut-guide">✂ — — — — — — — — — — — — — — ✂</div>}
+              <div className={`ticket-inner ${ticketFormat}`}>
+                <div className="ticket-header-logo"><CoffeeLogo size={ticketFormat === 'thermal' ? 28 : 40} monochrome={true} /></div>
+                <div className="ticket-brand">{ticketSettings.businessName || 'CoffeeOS'}</div>
+                {ticketSettings.address && <p className="ticket-meta">{ticketSettings.address}</p>}
+                {(ticketSettings.phone || ticketSettings.rfc) && (
+                  <p className="ticket-meta">
+                    {ticketSettings.phone && `Tel: ${ticketSettings.phone}`}
+                    {ticketSettings.phone && ticketSettings.rfc && ' · '}
+                    {ticketSettings.rfc && `RFC: ${ticketSettings.rfc}`}
+                  </p>
+                )}
+                <hr />
+                <div className="ticket-line"><span>Folio #{receipt.folio}</span><span>{new Date(receipt.createdAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span></div>
+                <div className="ticket-line ticket-meta-small"><span>{receipt.branch.name}</span><span>{receipt.terminal.name}</span></div>
+                <div className="ticket-meta" style={{ textAlign: 'center', fontSize: '9px' }}>{new Date(receipt.createdAt).toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                <hr />
+                {receipt.items.map((item) => (
+                  <div className="ticket-item-block" key={item.id}>
+                    <div className="ticket-line">
+                      <span><strong>{item.quantity} × {item.productName}</strong></span>
+                      <b>{money(item.subtotal)}</b>
+                    </div>
+                    {item.modifiers.length > 0 && (
+                      <div className="ticket-modifiers">{item.modifiers.map((m) => m.name).join(', ')}</div>
+                    )}
+                    {item.quantity > 1 && (
+                      <div className="ticket-unit-price">c/u {money(Number(item.subtotal) / item.quantity)}</div>
+                    )}
+                  </div>
+                ))}
+                <hr />
+                <div className="ticket-line"><span>Subtotal</span><b>{money(receipt.subtotal)}</b></div>
+                <div className="ticket-total"><span>TOTAL</span><b>{money(receipt.total)}</b></div>
+                <div className="ticket-line"><span>Método de pago</span><b>{paymentLabel(receipt.paymentMethod)}</b></div>
+                {receipt.paymentMethod === 'cash' && (
+                  <>
+                    <div className="ticket-line"><span>Efectivo recibido</span><b>{money(receipt.cashReceived)}</b></div>
+                    <div className="ticket-line ticket-change"><span>CAMBIO</span><b>{money(receipt.changeAmount)}</b></div>
+                  </>
+                )}
+                <BarcodeSVG value={receipt.folio} />
+                <p className="ticket-thanks">{ticketSettings.footerMessage || '¡Gracias por tu preferencia!'}</p>
+              </div>
+              {ticketFormat === 'sheet' && <div className="sheet-cut-guide">✂ — — — — — — — — — — — — — — ✂</div>}
+            </div>
+            <div className="receipt-actions">
+              <button className="coffee-primary" onClick={() => window.print()}>🖨️ Imprimir ticket</button>
+              <button className="coffee-link" onClick={() => setReceipt(null)}>Nueva venta</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── VENTAS DEL DÍA ─────────────────────────────────── */}
+      {showDailySales && (
+        <div className="modal-backdrop">
+          <div className="modifier-modal daily-sales-modal">
+            <button className="modal-close" onClick={() => setShowDailySales(false)}>×</button>
+            <small>VENTAS DEL TURNO</small>
+            <h2>Ventas de hoy</h2>
+            <div className="report-kpis" style={{ marginBottom: '16px' }}>
+              <div className="panel">
+                <small>TOTAL COBRADO</small>
+                <strong>{money(salesSummary?.total ?? 0)}</strong>
+              </div>
+              <div className="panel">
+                <small>No. DE TICKETS</small>
+                <strong>{recentSales.length}</strong>
+              </div>
+              <div className="panel">
+                <small>TICKET PROMEDIO</small>
+                <strong>{recentSales.length > 0 ? money(Number(salesSummary?.total ?? 0) / recentSales.length) : money(0)}</strong>
+              </div>
+            </div>
+            <div className="recent-sales-list">
+              {recentSales.length === 0 ? (
+                <p style={{ textAlign: 'center', color: 'var(--muted)', padding: '20px 0' }}>No hay ventas registradas en este turno.</p>
+              ) : (
+                recentSales.map((sale) => (
+                  <article className="recent-sale" key={sale.id}>
+                    <div>
+                      <strong>Ticket #{sale.folio}</strong>
+                      <small style={{ display: 'block', color: 'var(--muted)', fontSize: '11px', marginTop: '2px' }}>
+                        {new Date(sale.createdAt).toLocaleString('es-MX')} · {sale.items.reduce((s, i) => s + i.quantity, 0)} producto(s)
+                      </small>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span className={`payment-badge ${sale.paymentMethod}`}>{paymentLabel(sale.paymentMethod)}</span>
+                      <b>{money(sale.total)}</b>
+                      <button
+                        type="button"
+                        className="coffee-primary compact"
+                        onClick={() => { setReceipt(sale); setShowDailySales(false); }}
+                      >
+                        🖨️ Ver ticket
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CORTE Z ────────────────────────────────────────── */}
+      {printCorteZ && (
+        <div className="modal-backdrop">
+          <div className="receipt-modal corte-z-modal">
+            <div id="print-corte-z">
+              <div className="ticket-header-logo"><CoffeeLogo size={32} monochrome={true} /></div>
+              <div className="ticket-brand">{ticketSettings.businessName || 'CoffeeOS'}</div>
+              {ticketSettings.address && <p className="ticket-meta">{ticketSettings.address} · Tel: {ticketSettings.phone}</p>}
+              <h2 style={{ textAlign: 'center', margin: '12px 0 4px', fontSize: '14px', letterSpacing: '.5px' }}>CORTE DE CAJA (CIERRE Z)</h2>
+              <p className="ticket-meta">{printCorteZ.terminal.name} · {printCorteZ.branch.name}</p>
+              <p className="ticket-meta">{new Date(printCorteZ.closedAt).toLocaleString('es-MX')}</p>
+              <hr />
+              <div className="ticket-line"><span>Ventas realizadas</span><b>{printCorteZ.saleCount ?? 0}</b></div>
+              <div className="ticket-line"><span>Total de ventas</span><b>{money(printCorteZ.salesTotal ?? 0)}</b></div>
+              <div className="ticket-line"><span>Efectivo esperado</span><b>{money(printCorteZ.expectedCash ?? 0)}</b></div>
+              <div className="ticket-line"><span>Efectivo contado</span><b>{money(printCorteZ.countedCash ?? 0)}</b></div>
+              <div className="ticket-total" style={{ background: Number(printCorteZ.difference ?? 0) < 0 ? '#fee2e2' : '#dcfce7' }}>
+                <span>DIFERENCIA</span>
+                <b className={Number(printCorteZ.difference ?? 0) < 0 ? 'text-danger' : ''}>{money(printCorteZ.difference ?? 0)}</b>
+              </div>
+              <hr />
+              <div className="report-signature-block" style={{ marginTop: '20px' }}>
+                <div className="signature-box">
+                  <div className="sig-line"></div>
+                  <strong>Cajero/a</strong>
+                </div>
+                <div className="signature-box">
+                  <div className="sig-line"></div>
+                  <strong>Supervisor/a</strong>
+                </div>
+              </div>
+            </div>
+            <div className="receipt-actions">
+              <button className="coffee-primary" onClick={() => window.print()}>🖨️ Imprimir Corte Z</button>
+              <button className="coffee-link" onClick={() => setPrintCorteZ(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

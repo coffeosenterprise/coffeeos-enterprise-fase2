@@ -19,7 +19,11 @@ export class SalesPosService {
         where: { cashSessionId },
         orderBy: { createdAt: 'desc' },
         take: 50,
-        include: { items: { include: { modifiers: true } } },
+        include: {
+          items: { include: { modifiers: true } },
+          branch: true,
+          terminal: true,
+        },
       }),
     );
   }
