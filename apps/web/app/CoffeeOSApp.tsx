@@ -2533,7 +2533,7 @@ export default function CoffeeOSApp() {
               </div>
 
               {recipeStock && (
-                <div className="panel coffee-form" style={{ marginTop: '20px', border: '2px solid var(--green)', background: '#fff' }}>
+                <div className="panel coffee-form" style={{ marginTop: '20px', border: '2px solid var(--green)', background: 'var(--paper)' }}>
                   <div className="panel-title">
                     <div>
                       <small style={{ color: 'var(--green-2)', fontWeight: 700, letterSpacing: '1px' }}>RECETA DEL INGREDIENTE</small>
@@ -2551,7 +2551,7 @@ export default function CoffeeOSApp() {
                     <div>
                       <label style={{ fontWeight: 700, marginBottom: '8px' }}>¿Cómo quieres que se descuente el inventario?</label>
                       <div style={{ display: 'grid', gap: '10px' }}>
-                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', background: inventoryRecipeDraft.deductMode === 'auto_on_sale' ? '#f0fdf4' : '#fff' }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: '1px solid var(--line)', borderRadius: '8px', cursor: 'pointer', background: inventoryRecipeDraft.deductMode === 'auto_on_sale' ? 'var(--green-soft)' : 'var(--paper)' }}>
                           <input
                             type="radio"
                             name="deductMode"
@@ -2568,7 +2568,7 @@ export default function CoffeeOSApp() {
                           </div>
                         </label>
 
-                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', background: inventoryRecipeDraft.deductMode === 'hybrid' ? '#fefce8' : '#fff' }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: '1px solid var(--line)', borderRadius: '8px', cursor: 'pointer', background: inventoryRecipeDraft.deductMode === 'hybrid' ? 'var(--green-soft)' : 'var(--paper)' }}>
                           <input
                             type="radio"
                             name="deductMode"
@@ -2585,7 +2585,7 @@ export default function CoffeeOSApp() {
                           </div>
                         </label>
 
-                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', background: inventoryRecipeDraft.deductMode === 'manual_prep' ? '#faf5ff' : '#fff' }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: '1px solid var(--line)', borderRadius: '8px', cursor: 'pointer', background: inventoryRecipeDraft.deductMode === 'manual_prep' ? 'var(--green-soft)' : 'var(--paper)' }}>
                           <input
                             type="radio"
                             name="deductMode"
