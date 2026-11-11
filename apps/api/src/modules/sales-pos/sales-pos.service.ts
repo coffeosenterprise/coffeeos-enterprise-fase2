@@ -199,17 +199,31 @@ export class SalesPosService {
         );
       }
 
+      // Collect all direct ingredient IDs needed for recipes & modifiers
+      const directIngredientIds = new Set<string>();
+      for (const item of preparedItems) {
+        for (const recipe of item.product.ingredients) {
+          directIngredientIds.add(recipe.ingredientId);
+        }
+        for (const option of item.options) {
+          for (const recipe of option.ingredients) {
+            directIngredientIds.add(recipe.ingredientId);
+          }
+        }
+      }
+
       // Resolve sub-recipes for ingredients (auto_on_sale or hybrid)
       const ingredientRecipes = await tx.inventoryRecipe.findMany({
         where: {
-          outputIngredientId: { in: [...consumption.keys()] },
+          outputIngredientId: { in: Array.from(new Set([...consumption.keys(), ...directIngredientIds])) },
         },
         include: { items: true },
       });
+      const recipeMap = new Map(
+        ingredientRecipes.map((r) => [r.outputIngredientId, r]),
+      );
+
       if (ingredientRecipes.length > 0) {
-        const recipeMap = new Map(
-          ingredientRecipes.map((r) => [r.outputIngredientId, r]),
-        );
         const candidateStocks = await tx.inventoryStock.findMany({
           where: {
             branchId: dto.branchId,
@@ -253,20 +267,29 @@ export class SalesPosService {
         }
       }
 
+      // Query all ingredients needed for stock deduction AND cost calculations
+      const allIngredientIds = new Set<string>([
+        ...directIngredientIds,
+        ...consumption.keys(),
+      ]);
+
       const stocks = await tx.inventoryStock.findMany({
         where: {
           branchId: dto.branchId,
-          ingredientId: { in: [...consumption.keys()] },
+          ingredientId: { in: Array.from(allIngredientIds) },
         },
         include: { ingredient: true },
       });
       const stockMap = new Map(stocks.map((stock) => [stock.ingredientId, stock]));
       let costTotal = new Prisma.Decimal(0);
+
+      // Deduct actual raw materials from inventory
       for (const [ingredientId, required] of consumption) {
+        if (required.isZero() || required.isNegative()) continue;
         const stock = stockMap.get(ingredientId);
         if (!stock) {
           throw new ConflictException(
-            'Falta configurar inventario para un ingrediente de la receta',
+            'Falta configurar existencia en inventario para un ingrediente de la venta',
           );
         }
         const updated = await tx.inventoryStock.updateMany({
@@ -275,7 +298,7 @@ export class SalesPosService {
         });
         if (updated.count !== 1) {
           throw new ConflictException(
-            `Inventario insuficiente de ${stock.ingredient.name}`,
+            `Inventario insuficiente de ${stock.ingredient.name}. Se requieren ${required.toFixed(3)} ${stock.ingredient.unit}.`,
           );
         }
         const current = await tx.inventoryStock.findUniqueOrThrow({
@@ -297,29 +320,38 @@ export class SalesPosService {
         });
       }
 
+      // Calculate cost per item accurately (using direct stock or sub-recipe decomposition)
+      const getIngredientUnitCost = (ingredientId: string): Prisma.Decimal => {
+        const stock = stockMap.get(ingredientId);
+        if (stock && new Prisma.Decimal(stock.averageUnitCost).gt(0)) {
+          return new Prisma.Decimal(stock.averageUnitCost);
+        }
+        const subRecipe = recipeMap.get(ingredientId);
+        if (subRecipe && subRecipe.items.length > 0) {
+          let subTotal = new Prisma.Decimal(0);
+          for (const item of subRecipe.items) {
+            const itemStock = stockMap.get(item.ingredientId);
+            const itemCost = itemStock ? new Prisma.Decimal(itemStock.averageUnitCost) : new Prisma.Decimal(0);
+            subTotal = subTotal.plus(new Prisma.Decimal(item.quantity).mul(itemCost));
+          }
+          return subTotal.div(subRecipe.outputQuantity);
+        }
+        return stock ? new Prisma.Decimal(stock.averageUnitCost) : new Prisma.Decimal(0);
+      };
+
       for (const item of preparedItems) {
         let itemCost = new Prisma.Decimal(0);
         for (const recipe of item.product.ingredients) {
-          const stock = stockMap.get(recipe.ingredientId);
-          if (!stock) {
-            throw new ConflictException(
-              'Falta configurar inventario para un ingrediente de la receta',
-            );
-          }
+          const unitCost = getIngredientUnitCost(recipe.ingredientId);
           itemCost = itemCost.plus(
-            recipe.quantity.mul(item.quantity).mul(stock.averageUnitCost),
+            recipe.quantity.mul(item.quantity).mul(unitCost),
           );
         }
         for (const option of item.options) {
           for (const recipe of option.ingredients) {
-            const stock = stockMap.get(recipe.ingredientId);
-            if (!stock) {
-              throw new ConflictException(
-                'Falta configurar inventario para un ingrediente del extra',
-              );
-            }
+            const unitCost = getIngredientUnitCost(recipe.ingredientId);
             itemCost = itemCost.plus(
-              recipe.quantity.mul(item.quantity).mul(stock.averageUnitCost),
+              recipe.quantity.mul(item.quantity).mul(unitCost),
             );
           }
         }

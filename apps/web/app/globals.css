@@ -714,3 +714,168 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
   .setup-ticket-grid { grid-template-columns: 1fr; }
 }
 
+/* ==== THEMES COLOR PALETTES ==== */
+:root[data-theme="espresso"] {
+  --ink: #1c1511;
+  --muted: #786c63;
+  --cream: #f6f1ea;
+  --paper: #fffefb;
+  --line: #e6dfd5;
+  --green: #874922;
+  --green-2: #ad602e;
+  --green-soft: #f7ebe1;
+  --copper: #c87b45;
+  --danger: #b3392d;
+  --shadow: 0 18px 50px rgba(54, 32, 18, 0.09);
+}
+
+:root[data-theme="sage"] {
+  --ink: #16241c;
+  --muted: #62756a;
+  --cream: #f0f4f1;
+  --paper: #fcfdfc;
+  --line: #d8e2dc;
+  --green: #3a6351;
+  --green-2: #4f8069;
+  --green-soft: #e2ece6;
+  --copper: #c27d53;
+  --danger: #b83d34;
+  --shadow: 0 18px 50px rgba(22, 36, 28, 0.08);
+}
+
+:root[data-theme="obsidian"] {
+  --ink: #f0ede8;
+  --muted: #9fa79f;
+  --cream: #141a17;
+  --paper: #1c2320;
+  --line: #2d3832;
+  --green: #2a7356;
+  --green-2: #389470;
+  --green-soft: #23332c;
+  --copper: #e28a4b;
+  --danger: #d44d42;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="emerald"] {
+  --ink: #122119;
+  --muted: #667c70;
+  --cream: #f2f7f4;
+  --paper: #ffffff;
+  --line: #dce7e1;
+  --green: #0d5f44;
+  --green-2: #15805d;
+  --green-soft: #def2e8;
+  --copper: #c7773b;
+  --danger: #b5382b;
+  --shadow: 0 18px 50px rgba(13, 95, 68, 0.08);
+}
+
+/* ==== DEV QUICK LOGIN BUTTON ==== */
+.dev-quick-login-btn {
+  border: 1.5px dashed var(--muted);
+  border-radius: 10px;
+  padding: 9px 14px;
+  background: var(--cream);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+.dev-quick-login-btn:hover {
+  border-color: var(--green);
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+/* ==== THEME SELECTOR CARDS ==== */
+.theme-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.theme-card {
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+.theme-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--green-2);
+  box-shadow: var(--shadow);
+}
+.theme-card.active {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft), var(--shadow);
+}
+.theme-card-preview {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+}
+.espresso-preview { background: #f6f1ea; }
+.espresso-preview .preview-swatch.primary { background: #874922; }
+.espresso-preview .preview-swatch.accent { background: #c87b45; }
+.espresso-preview .preview-swatch.surface { background: #fffefb; border: 1px solid #e6dfd5; }
+
+.sage-preview { background: #f0f4f1; }
+.sage-preview .preview-swatch.primary { background: #3a6351; }
+.sage-preview .preview-swatch.accent { background: #c27d53; }
+.sage-preview .preview-swatch.surface { background: #fcfdfc; border: 1px solid #d8e2dc; }
+
+.obsidian-preview { background: #141a17; }
+.obsidian-preview .preview-swatch.primary { background: #2a7356; }
+.obsidian-preview .preview-swatch.accent { background: #e28a4b; }
+.obsidian-preview .preview-swatch.surface { background: #1c2320; border: 1px solid #2d3832; }
+
+.emerald-preview { background: #f2f7f4; }
+.emerald-preview .preview-swatch.primary { background: #0d5f44; }
+.emerald-preview .preview-swatch.accent { background: #10b981; }
+.emerald-preview .preview-swatch.surface { background: #ffffff; border: 1px solid #dce7e1; }
+
+.preview-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.theme-card-body {
+  padding: 14px 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.theme-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.theme-card-header strong {
+  font-size: 14px;
+  color: var(--ink);
+}
+.theme-active-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: var(--green);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.theme-card-body p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}

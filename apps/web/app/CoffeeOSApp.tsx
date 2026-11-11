@@ -143,6 +143,11 @@ interface TicketSettings {
   phone: string;
   footerMessage: string;
   defaultFormat: 'thermal' | 'sheet';
+  logoType: 'default' | 'custom' | 'text';
+  logoUrl?: string;
+  currency: string;
+  showTax: boolean;
+  taxRate: number;
 }
 
 const DEFAULT_TICKET_SETTINGS: TicketSettings = {
@@ -152,6 +157,11 @@ const DEFAULT_TICKET_SETTINGS: TicketSettings = {
   phone: '55 1234 5678',
   footerMessage: '¡Gracias por su compra! Vuelva pronto.',
   defaultFormat: 'thermal',
+  logoType: 'default',
+  logoUrl: '',
+  currency: '$',
+  showTax: false,
+  taxRate: 16,
 };
 interface SalesSummary {
   saleCount: number;
@@ -407,6 +417,55 @@ function BarcodeSVG({ value }: { value: string | number }) {
   );
 }
 
+function TicketLogoHeader({
+  settings,
+  size = 32,
+}: {
+  settings: TicketSettings;
+  size?: number;
+}) {
+  if (settings.logoType === 'custom' && settings.logoUrl) {
+    return (
+      <div className="ticket-header-logo">
+        <img
+          src={settings.logoUrl}
+          alt={settings.businessName}
+          style={{
+            maxHeight: `${Math.round(size * 1.5)}px`,
+            maxWidth: '150px',
+            objectFit: 'contain',
+            margin: '0 auto 6px',
+            display: 'block',
+          }}
+        />
+      </div>
+    );
+  }
+  if (settings.logoType === 'text') {
+    return (
+      <div className="ticket-header-logo" style={{ margin: '4px 0 8px' }}>
+        <div
+          style={{
+            fontWeight: 800,
+            fontSize: `${Math.max(14, Math.round(size * 0.48))}px`,
+            letterSpacing: '0.5px',
+            textTransform: 'uppercase',
+            textAlign: 'center',
+            lineHeight: 1.2,
+          }}
+        >
+          ☕ {settings.businessName || 'CAFETERÍA'}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="ticket-header-logo">
+      <CoffeeLogo size={size} monochrome={true} />
+    </div>
+  );
+}
+
 function blankModifierGroup(): ModifierGroupDraft {
   return {
     name: '',
@@ -424,7 +483,7 @@ export default function CoffeeOSApp() {
   >(null);
   const [ready, setReady] = useState(false);
   const [authMode, setAuthMode] = useState<
-    'login' | 'register' | 'recover-verification' | 'verify'
+    'login' | 'register' | 'recover-verification' | 'verify' | 'forgot-password' | 'reset-password'
   >('login');
   const [pendingVerification, setPendingVerification] = useState({
     tenantSlug: '',
@@ -432,6 +491,13 @@ export default function CoffeeOSApp() {
     password: '',
     developmentCode: '',
   });
+  const [resetData, setResetData] = useState({
+    tenantSlug: '',
+    email: '',
+    token: '',
+    newPassword: '',
+  });
+  const [theme, setTheme] = useState<'espresso' | 'sage' | 'obsidian' | 'emerald'>('espresso');
   const [view, setView] = useState<View>('pos');
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
@@ -494,7 +560,27 @@ export default function CoffeeOSApp() {
   const [ticketSettings, setTicketSettings] = useState<TicketSettings>(DEFAULT_TICKET_SETTINGS);
   const [inventorySubView, setInventorySubView] = useState<'stocks' | 'valuation'>('stocks');
   const [printCorteZ, setPrintCorteZ] = useState<ClosedCashSession | null>(null);
-  const [setupTab, setSetupTab] = useState<'ticket' | 'branches'>('ticket');
+  const [setupTab, setSetupTab] = useState<'ticket' | 'branches' | 'appearance'>('ticket');
+
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem('coffeeos_theme') as 'espresso' | 'sage' | 'obsidian' | 'emerald';
+      if (savedTheme) {
+        setTheme(savedTheme);
+        document.documentElement.setAttribute('data-theme', savedTheme);
+      } else {
+        document.documentElement.setAttribute('data-theme', 'espresso');
+      }
+    } catch {}
+  }, []);
+
+  function changeTheme(newTheme: 'espresso' | 'sage' | 'obsidian' | 'emerald') {
+    setTheme(newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+    try {
+      localStorage.setItem('coffeeos_theme', newTheme);
+    } catch {}
+  }
 
   useEffect(() => {
     try {
@@ -513,7 +599,7 @@ export default function CoffeeOSApp() {
     try {
       localStorage.setItem('coffeeos_ticket_settings', JSON.stringify(next));
     } catch {}
-    setNotice({ type: 'success', text: 'Preferencias del ticket guardadas correctamente.' });
+    setNotice({ type: 'success', text: 'Preferencias guardadas correctamente.' });
   }
 
   const payload = useMemo(
@@ -947,6 +1033,84 @@ export default function CoffeeOSApp() {
         pendingVerification.password,
       );
     }, 'Correo verificado. Tu negocio ya está activo.');
+  }
+
+  function handleForgotPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const tenantSlug = String(form.get('tenantSlug')).trim().toLowerCase();
+    const email = String(form.get('email')).trim();
+    void run(async () => {
+      const result = await publicRequest<{ requested?: boolean; resetToken?: string }>(
+        '/v1/auth/password/recovery',
+        {
+          method: 'POST',
+          body: JSON.stringify({ tenantSlug, email }),
+        },
+      );
+      setResetData((c) => ({
+        ...c,
+        tenantSlug,
+        email,
+        token: result?.resetToken ?? '',
+      }));
+      setAuthMode('reset-password');
+    }, 'Instrucciones enviadas. Ingresa el código o token de restablecimiento.');
+  }
+
+  function handleResetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const token = String(form.get('token')).trim();
+    const newPassword = String(form.get('newPassword'));
+    void run(async () => {
+      await publicRequest('/v1/auth/password/reset', {
+        method: 'POST',
+        body: JSON.stringify({ token, newPassword }),
+      });
+      setAuthMode('login');
+      setNotice({
+        type: 'success',
+        text: 'Contraseña actualizada. Inicia sesión con tu nueva contraseña.',
+      });
+    });
+  }
+
+  async function handleLocalQuickLogin() {
+    void run(async () => {
+      const demoSlug = 'cafeteria-demo';
+      const demoEmail = 'admin@coffeeos.local';
+      const demoPass = 'Password123!';
+      try {
+        await login(demoSlug, demoEmail, demoPass);
+      } catch {
+        const reg = await publicRequest<{ developmentCode?: string }>('/v1/tenants', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: 'Cafetería Demo Local',
+            slug: demoSlug,
+            plan: 'starter',
+            owner: {
+              email: demoEmail,
+              password: demoPass,
+              firstName: 'Administrador',
+              lastName: 'Local',
+            },
+          }),
+        });
+        if (reg?.developmentCode) {
+          await publicRequest('/v1/auth/email/verify', {
+            method: 'POST',
+            body: JSON.stringify({
+              tenantSlug: demoSlug,
+              email: demoEmail,
+              code: reg.developmentCode,
+            }),
+          });
+        }
+        await login(demoSlug, demoEmail, demoPass);
+      }
+    }, 'Sesión local de prueba iniciada.');
   }
 
   function logout() {
@@ -1640,15 +1804,79 @@ export default function CoffeeOSApp() {
                 <label>Correo<input name="email" type="email" required /></label>
                 <label>Contraseña<input name="password" type="password" required /></label>
                 <button className="coffee-primary" disabled={busy}>{busy ? 'Ingresando…' : 'Entrar a CoffeeOS'}</button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+                  <button
+                    type="button"
+                    className="coffee-link"
+                    onClick={() => {
+                      setNotice(null);
+                      setAuthMode('forgot-password');
+                    }}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                  <button
+                    type="button"
+                    className="coffee-link"
+                    onClick={() => {
+                      setNotice(null);
+                      setAuthMode('recover-verification');
+                    }}
+                  >
+                    Verificar una cuenta pendiente
+                  </button>
+                  <button
+                    type="button"
+                    className="dev-quick-login-btn"
+                    onClick={handleLocalQuickLogin}
+                    title="Crea o inicia sesión con la cuenta de prueba local (admin@coffeeos.local)"
+                  >
+                    ⚡ Acceso rápido local (Demostración)
+                  </button>
+                </div>
+              </form>
+            )}
+            {authMode === 'forgot-password' && (
+              <form className="coffee-form" onSubmit={handleForgotPassword}>
+                <header>
+                  <small>RECUPERACIÓN</small>
+                  <h2>Restablece tu contraseña</h2>
+                  <p>Ingresa el identificador de tu negocio y tu correo. Te enviaremos un código de seguridad.</p>
+                </header>
+                <label>Identificador del negocio<input name="tenantSlug" placeholder="mi-cafeteria" required /></label>
+                <label>Correo electrónico<input name="email" type="email" required /></label>
+                <button className="coffee-primary" disabled={busy}>{busy ? 'Enviando…' : 'Enviar código de recuperación'}</button>
                 <button
                   type="button"
                   className="coffee-link"
                   onClick={() => {
                     setNotice(null);
-                    setAuthMode('recover-verification');
+                    setAuthMode('login');
                   }}
                 >
-                  Verificar una cuenta pendiente
+                  Volver a iniciar sesión
+                </button>
+              </form>
+            )}
+            {authMode === 'reset-password' && (
+              <form className="coffee-form" onSubmit={handleResetPassword}>
+                <header>
+                  <small>NUEVA CONTRASEÑA</small>
+                  <h2>Establece tu contraseña</h2>
+                  <p>Pega el código o token de restablecimiento y escribe tu nueva contraseña.</p>
+                </header>
+                <label>Código o token de restablecimiento<input name="token" defaultValue={resetData.token} placeholder="Pega el código recibido" required /></label>
+                <label>Nueva contraseña<input name="newPassword" type="password" minLength={8} placeholder="Mínimo 8 caracteres" required /></label>
+                <button className="coffee-primary" disabled={busy}>{busy ? 'Actualizando…' : 'Cambiar contraseña y entrar'}</button>
+                <button
+                  type="button"
+                  className="coffee-link"
+                  onClick={() => {
+                    setNotice(null);
+                    setAuthMode('login');
+                  }}
+                >
+                  Volver a iniciar sesión
                 </button>
               </form>
             )}
@@ -1791,6 +2019,13 @@ export default function CoffeeOSApp() {
                 >
                   🏢 Sucursales y Terminales ({branches.length} / {terminals.length})
                 </button>
+                <button
+                  type="button"
+                  className={setupTab === 'appearance' ? 'active' : ''}
+                  onClick={() => setSetupTab('appearance')}
+                >
+                  🎨 Apariencia y Tema
+                </button>
               </div>
 
               {setupTab === 'ticket' && (
@@ -1807,6 +2042,8 @@ export default function CoffeeOSApp() {
                         phone: String(form.get('phone') || ''),
                         footerMessage: String(form.get('footerMessage') || ''),
                         defaultFormat: form.get('defaultFormat') as 'thermal' | 'sheet',
+                        logoType: form.get('logoType') as 'default' | 'custom' | 'text',
+                        logoUrl: String(form.get('logoUrl') || ''),
                       });
                     }}
                   >
@@ -1821,6 +2058,44 @@ export default function CoffeeOSApp() {
                         required
                       />
                     </label>
+
+                    <label>
+                      Logo en el encabezado del ticket
+                      <select
+                        name="logoType"
+                        value={ticketSettings.logoType}
+                        onChange={(e) =>
+                          setTicketSettings((prev) => ({
+                            ...prev,
+                            logoType: e.target.value as 'default' | 'custom' | 'text',
+                          }))
+                        }
+                      >
+                        <option value="default">☕ Logo CoffeeOS (Monocromático Térmico)</option>
+                        <option value="custom">🖼️ Logo personalizado de tu cafetería (URL / Imagen)</option>
+                        <option value="text">🔤 Sin logotipo (Sólo texto comercial destacado)</option>
+                      </select>
+                      <small>Aplica exclusivamente al ticket de compra impreso para los clientes.</small>
+                    </label>
+
+                    {ticketSettings.logoType === 'custom' && (
+                      <label>
+                        URL del logo de tu cafetería
+                        <input
+                          name="logoUrl"
+                          value={ticketSettings.logoUrl || ''}
+                          onChange={(e) =>
+                            setTicketSettings((prev) => ({
+                              ...prev,
+                              logoUrl: e.target.value,
+                            }))
+                          }
+                          placeholder="https://ejemplo.com/logo-cafeteria.png o data:image/..."
+                        />
+                        <small>Pega el enlace a la imagen de tu logotipo. Se ajustará al ancho del ticket.</small>
+                      </label>
+                    )}
+
                     <div className="form-row">
                       <label>
                         RFC / Identificación fiscal
@@ -1874,9 +2149,7 @@ export default function CoffeeOSApp() {
                       <span className="count-badge">Diseño en vivo</span>
                     </div>
                     <div className="sample-ticket-preview">
-                      <div className="ticket-header-logo">
-                        <CoffeeLogo size={36} monochrome={true} />
-                      </div>
+                      <TicketLogoHeader settings={ticketSettings} size={36} />
                       <div className="sample-ticket-name">{ticketSettings.businessName || 'CoffeeOS Café'}</div>
                       <div className="sample-ticket-muted">RFC: {ticketSettings.rfc || 'XAXX010101000'}</div>
                       <div className="sample-ticket-muted">{ticketSettings.address || 'Av. Principal #123, Centro'}</div>
@@ -1954,6 +2227,95 @@ export default function CoffeeOSApp() {
                     </form>
                   </div>
                 </>
+              )}
+
+              {setupTab === 'appearance' && (
+                <div className="panel" style={{ padding: '24px' }}>
+                  <div className="panel-title" style={{ marginBottom: '16px' }}>
+                    <div>
+                      <small style={{ color: 'var(--green-2)', fontWeight: 700 }}>PERSONALIZACIÓN VISUAL</small>
+                      <h3 style={{ margin: '4px 0 0' }}>Temas y Paleta de Color del Sistema</h3>
+                    </div>
+                    <span className="count-badge">Tema activo: {theme.toUpperCase()}</span>
+                  </div>
+                  <p style={{ color: 'var(--muted)', marginBottom: '24px', maxWidth: '680px', fontSize: '13px', lineHeight: 1.5 }}>
+                    Elige la atmósfera cromática que mejor represente la personalidad de tu cafetería. El tema se aplica al instante en todo el punto de venta, inventario, reportes y configuraciones.
+                  </p>
+
+                  <div className="theme-selector-grid">
+                    <div
+                      className={`theme-card ${theme === 'espresso' ? 'active' : ''}`}
+                      onClick={() => changeTheme('espresso')}
+                    >
+                      <div className="theme-card-preview espresso-preview">
+                        <div className="preview-swatch primary" />
+                        <div className="preview-swatch accent" />
+                        <div className="preview-swatch surface" />
+                      </div>
+                      <div className="theme-card-body">
+                        <div className="theme-card-header">
+                          <strong>☕ Espresso Gold</strong>
+                          {theme === 'espresso' && <span className="theme-active-tag">Activo</span>}
+                        </div>
+                        <p>Ambiente tostado artesanal, ámbar cálido y crema suave. Ideal para cafeterías de especialidad.</p>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`theme-card ${theme === 'sage' ? 'active' : ''}`}
+                      onClick={() => changeTheme('sage')}
+                    >
+                      <div className="theme-card-preview sage-preview">
+                        <div className="preview-swatch primary" />
+                        <div className="preview-swatch accent" />
+                        <div className="preview-swatch surface" />
+                      </div>
+                      <div className="theme-card-body">
+                        <div className="theme-card-header">
+                          <strong>🌿 Salvia Nórdica</strong>
+                          {theme === 'sage' && <span className="theme-active-tag">Activo</span>}
+                        </div>
+                        <p>Verde salvia fresco, orgánico y relajante. Perfecto para concepto botánico o brunch saludable.</p>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`theme-card ${theme === 'obsidian' ? 'active' : ''}`}
+                      onClick={() => changeTheme('obsidian')}
+                    >
+                      <div className="theme-card-preview obsidian-preview">
+                        <div className="preview-swatch primary" />
+                        <div className="preview-swatch accent" />
+                        <div className="preview-swatch surface" />
+                      </div>
+                      <div className="theme-card-body">
+                        <div className="theme-card-header">
+                          <strong>🌑 Obsidian Roast</strong>
+                          {theme === 'obsidian' && <span className="theme-active-tag">Activo</span>}
+                        </div>
+                        <p>Modo oscuro premium con acentos cobre brillante. Máximo contraste para bares y turnos nocturnos.</p>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`theme-card ${theme === 'emerald' ? 'active' : ''}`}
+                      onClick={() => changeTheme('emerald')}
+                    >
+                      <div className="theme-card-preview emerald-preview">
+                        <div className="preview-swatch primary" />
+                        <div className="preview-swatch accent" />
+                        <div className="preview-swatch surface" />
+                      </div>
+                      <div className="theme-card-body">
+                        <div className="theme-card-header">
+                          <strong>💎 Esmeralda Pulido</strong>
+                          {theme === 'emerald' && <span className="theme-active-tag">Activo</span>}
+                        </div>
+                        <p>Verde joya contemporáneo, pulcro y elegante con alta legibilidad en pantallas táctiles.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -2100,8 +2462,8 @@ export default function CoffeeOSApp() {
                   <h3>Nuevo ingrediente</h3>
                   <label>Nombre<input name="name" placeholder="Nutella" required /></label>
                   <label>Unidad<select name="unit" defaultValue="g"><option value="pieza">pieza</option><option value="g">gramos (g)</option><option value="kg">kilogramos (kg)</option><option value="ml">mililitros (ml)</option><option value="l">litros (l)</option></select></label>
-                  <div className="form-row"><label>Cantidad inicial<input name="quantity" type="number" step="0.001" min="0" required /></label><label>Costo unitario inicial<input name="initialUnitCost" type="number" step="0.0001" min="0" defaultValue="0" required /></label></div>
-                  <label>Avisar al llegar a<input name="minQuantity" type="number" step="0.001" min="0" required /></label>
+                  <div className="form-row"><label>Cantidad inicial<input name="quantity" type="number" step="any" min="0" required /></label><label>Costo unitario inicial<input name="initialUnitCost" type="number" step="any" min="0" defaultValue="0" required /></label></div>
+                  <label>Avisar al llegar a<input name="minQuantity" type="number" step="any" min="0" required /></label>
                   <button className="coffee-primary compact" disabled={busy}>Agregar al inventario</button>
                 </form>
                 <div className="panel table-panel">
@@ -2360,7 +2722,7 @@ export default function CoffeeOSApp() {
               }}>
                 <h3>Registrar movimiento</h3>
                 <div className="form-row"><label>Ingrediente<select name="stockId" required><option value="">Selecciona</option>{stocks.map((stock) => <option key={stock.id} value={stock.id}>{stock.ingredient.name}</option>)}</select></label><label>Tipo<select name="type" defaultValue="salida"><option value="entrada">Entrada</option><option value="salida">Salida</option><option value="ajuste">Ajuste positivo</option><option value="merma">Merma</option></select></label></div>
-                <div className="form-row"><label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" required /></label><label>Costo unitario<input name="unitCost" type="number" min="0" step="0.0001" defaultValue="0" /></label></div>
+                <div className="form-row"><label>Cantidad<input name="quantity" type="number" min="0.0001" step="any" required /></label><label>Costo unitario<input name="unitCost" type="number" min="0" step="any" defaultValue="0" /></label></div>
                 <label>Motivo<input name="reason" maxLength={250} placeholder="Ej. desperdicio, reposición..." /></label>
                 <button className="coffee-primary compact" disabled={busy || stocks.length === 0}>Guardar movimiento</button>
               </form>
@@ -2690,9 +3052,9 @@ export default function CoffeeOSApp() {
 
                 <div className="cart-lines">
                   {cart.map((line) => {
-                    const unitPrice =
-                      Number(line.product.price) +
-                      line.options.reduce((sum, opt) => sum + Number(opt.priceDelta), 0);
+                    const basePrice = Number(line.product.price);
+                    const extras = line.options.reduce((sum, opt) => sum + Number(opt.priceDelta), 0);
+                    const unitPrice = basePrice + extras;
                     const lineSubtotal = unitPrice * line.quantity;
                     return (
                       <article key={line.key} className="cart-item-row">
@@ -2714,7 +3076,13 @@ export default function CoffeeOSApp() {
                             </small>
                           )}
                           <div className="cart-item-pricing">
-                            <span>{money(unitPrice)} c/u</span>
+                            <span>
+                              {extras > 0 ? (
+                                <>Base {money(basePrice)} + Ext. {money(extras)} ({money(unitPrice)} c/u)</>
+                              ) : (
+                                <>{money(unitPrice)} c/u</>
+                              )}
+                            </span>
                             <b>{money(lineSubtotal)}</b>
                           </div>
                         </div>
@@ -2788,7 +3156,7 @@ export default function CoffeeOSApp() {
 
       {deletingProduct && <div className="modal-backdrop"><div className="confirmation-modal"><small>CONFIRMAR ELIMINACIÓN</small><h2>¿Quieres eliminar “{deletingProduct.name}”?</h2><p>El producto desaparecerá del menú y del punto de venta. Las ventas y tickets anteriores se conservarán.</p><div><button type="button" className="coffee-link" disabled={busy} onClick={() => setDeletingProduct(null)}>Cancelar</button><button type="button" className="danger-button" disabled={busy} onClick={confirmDeleteProduct}>{busy ? 'Eliminando…' : 'Aceptar y eliminar'}</button></div></div></div>}
 
-      {editingStock && <div className="modal-backdrop"><form className="modifier-modal coffee-form" onSubmit={submitIngredientEdit}><button type="button" className="modal-close" onClick={() => setEditingStock(null)}>×</button><small>EDITAR INVENTARIO</small><h2>{editingStock.ingredient.name}</h2><p>Puedes corregir el nombre, la unidad, la existencia actual y el nivel de aviso.</p><label>Nombre<input name="name" defaultValue={editingStock.ingredient.name} required /></label><label>Unidad<select name="unit" defaultValue={editingStock.ingredient.unit}><option value="pieza">pieza</option><option value="g">gramos (g)</option><option value="kg">kilogramos (kg)</option><option value="ml">mililitros (ml)</option><option value="l">litros (l)</option></select></label><div className="form-row"><label>Existencia actual<input name="quantity" type="number" step="0.001" min="0" defaultValue={Number(editingStock.quantity)} required /></label><label>Avisar al llegar a<input name="minQuantity" type="number" step="0.001" min="0" defaultValue={Number(editingStock.minQuantity)} required /></label></div><button className="coffee-primary" disabled={busy}>Guardar cambios del ingrediente</button></form></div>}
+      {editingStock && <div className="modal-backdrop"><form className="modifier-modal coffee-form" onSubmit={submitIngredientEdit}><button type="button" className="modal-close" onClick={() => setEditingStock(null)}>×</button><small>EDITAR INVENTARIO</small><h2>{editingStock.ingredient.name}</h2><p>Puedes corregir el nombre, la unidad, la existencia actual y el nivel de aviso.</p><label>Nombre<input name="name" defaultValue={editingStock.ingredient.name} required /></label><label>Unidad<select name="unit" defaultValue={editingStock.ingredient.unit}><option value="pieza">pieza</option><option value="g">gramos (g)</option><option value="kg">kilogramos (kg)</option><option value="ml">mililitros (ml)</option><option value="l">litros (l)</option></select></label><div className="form-row"><label>Existencia actual<input name="quantity" type="number" step="any" min="0" defaultValue={Number(editingStock.quantity)} required /></label><label>Avisar al llegar a<input name="minQuantity" type="number" step="any" min="0" defaultValue={Number(editingStock.minQuantity)} required /></label></div><button className="coffee-primary" disabled={busy}>Guardar cambios del ingrediente</button></form></div>}
 
       {selectedProduct && <div className="modal-backdrop"><div className="modifier-modal"><button className="modal-close" onClick={() => setSelectedProduct(null)}>×</button><small>PERSONALIZA EL PRODUCTO</small><h2>{selectedProduct.name}</h2><p>Precio base: {money(selectedProduct.price)}</p>{selectedProduct.modifierGroups.map((group) => <fieldset key={group.id}><legend>{group.name} {group.required && <b>Obligatorio</b>}<small>Elige hasta {group.maxSelections}</small></legend>{group.options.map((option) => <label className={`option-card ${selectedOptions.includes(option.id) ? 'selected' : ''}`} key={option.id}><input type="checkbox" checked={selectedOptions.includes(option.id)} onChange={() => toggleOption(group, option.id)} /><span><strong>{option.name}</strong><small>{Number(option.priceDelta) ? `+ ${money(option.priceDelta)}` : 'Incluido'}</small></span></label>)}</fieldset>)}<div className="modal-footer"><div className="quantity-control"><button onClick={() => setSelectedQuantity((value) => Math.max(1, value - 1))}>−</button><b>{selectedQuantity}</b><button onClick={() => setSelectedQuantity((value) => value + 1)}>+</button></div><button className="coffee-primary" onClick={() => {
         const invalid = selectedProduct.modifierGroups.some((group) => {
@@ -2815,7 +3183,7 @@ export default function CoffeeOSApp() {
             <div id="print-ticket" className={ticketFormat === 'sheet' ? 'ticket-sheet-wrap' : ''}>
               {ticketFormat === 'sheet' && <div className="sheet-cut-guide">✂ — — — — — — — — — — — — — — ✂</div>}
               <div className={`ticket-inner ${ticketFormat}`}>
-                <div className="ticket-header-logo"><CoffeeLogo size={ticketFormat === 'thermal' ? 28 : 40} monochrome={true} /></div>
+                <TicketLogoHeader settings={ticketSettings} size={ticketFormat === 'thermal' ? 28 : 40} />
                 <div className="ticket-brand">{ticketSettings.businessName || 'CoffeeOS'}</div>
                 {ticketSettings.address && <p className="ticket-meta">{ticketSettings.address}</p>}
                 {(ticketSettings.phone || ticketSettings.rfc) && (
@@ -2924,7 +3292,7 @@ export default function CoffeeOSApp() {
         <div className="modal-backdrop">
           <div className="receipt-modal corte-z-modal">
             <div id="print-corte-z">
-              <div className="ticket-header-logo"><CoffeeLogo size={32} monochrome={true} /></div>
+              <TicketLogoHeader settings={ticketSettings} size={32} />
               <div className="ticket-brand">{ticketSettings.businessName || 'CoffeeOS'}</div>
               {ticketSettings.address && <p className="ticket-meta">{ticketSettings.address} · Tel: {ticketSettings.phone}</p>}
               <h2 style={{ textAlign: 'center', margin: '12px 0 4px', fontSize: '14px', letterSpacing: '.5px' }}>CORTE DE CAJA (CIERRE Z)</h2>
