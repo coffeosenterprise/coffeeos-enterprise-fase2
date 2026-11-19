@@ -2482,15 +2482,6 @@ export default function CoffeeOSApp() {
                             {recipe && (
                               <span
                                 className={`recipe-badge ${recipe.deductMode === 'auto_on_sale' ? 'auto' : recipe.deductMode === 'hybrid' ? 'hybrid' : 'manual'}`}
-                                style={{
-                                  display: 'inline-block',
-                                  padding: '2px 7px',
-                                  borderRadius: '6px',
-                                  fontSize: '9px',
-                                  fontWeight: 700,
-                                  background: recipe.deductMode === 'auto_on_sale' ? '#dcfce7' : recipe.deductMode === 'hybrid' ? '#fef3c7' : '#f3e8ff',
-                                  color: recipe.deductMode === 'auto_on_sale' ? '#15803d' : recipe.deductMode === 'hybrid' ? '#b45309' : '#7e22ce',
-                                }}
                                 title={`Modo de descuento: ${recipe.deductMode}`}
                               >
                                 {recipe.deductMode === 'auto_on_sale' && '⚡ Auto en venta'}
@@ -2507,7 +2498,7 @@ export default function CoffeeOSApp() {
                             <button type="button" onClick={() => setEditingStock(stock)}>Editar</button>
                             <button
                               type="button"
-                              style={recipe ? { background: '#e0f2fe', color: '#0369a1' } : {}}
+                              className={recipe ? 'stock-btn-subrecipe' : ''}
                               onClick={() => openIngredientRecipe(stock)}
                               title={recipe ? 'Ver o modificar receta de este ingrediente' : 'Crear receta para este ingrediente'}
                             >
@@ -2516,7 +2507,7 @@ export default function CoffeeOSApp() {
                             {recipe && (
                               <button
                                 type="button"
-                                style={{ background: '#fef3c7', color: '#92400e' }}
+                                className="stock-btn-prepare"
                                 onClick={() => executeInventoryRecipe(recipe)}
                                 title="Registrar preparación de unidades de este ingrediente"
                               >
