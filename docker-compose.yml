@@ -110,6 +110,14 @@ services:
     depends_on:
       - api
 
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: coffeeos-tunnel
+    command: tunnel --no-autoupdate --url http://web:3000
+    restart: unless-stopped
+    depends_on:
+      - web
+
 volumes:
   pgdata:
   objectdata:
