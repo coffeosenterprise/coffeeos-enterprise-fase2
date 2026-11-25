@@ -560,7 +560,17 @@ export default function CoffeeOSApp() {
   const [ticketSettings, setTicketSettings] = useState<TicketSettings>(DEFAULT_TICKET_SETTINGS);
   const [inventorySubView, setInventorySubView] = useState<'stocks' | 'valuation'>('stocks');
   const [printCorteZ, setPrintCorteZ] = useState<ClosedCashSession | null>(null);
-  const [setupTab, setSetupTab] = useState<'ticket' | 'branches' | 'appearance'>('ticket');
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogCategoryFilter, setCatalogCategoryFilter] = useState('');
+  const [catalogViewMode, setCatalogViewMode] = useState<'list' | 'builder'>('list');
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [inventoryStockFilter, setInventoryStockFilter] = useState<'all' | 'low' | 'ok'>('all');
+  const [quickRestockStock, setQuickRestockStock] = useState<Stock | null>(null);
+  const [quickRestockAmount, setQuickRestockAmount] = useState('');
+  const [quickRestockCost, setQuickRestockCost] = useState('');
+  const [setupTab, setSetupTab] = useState<'ticket' | 'branches' | 'appearance' | 'ingredients'>('ticket');
 
   useEffect(() => {
     try {
@@ -1439,6 +1449,85 @@ export default function CoffeeOSApp() {
     }, 'Categoría creada.');
   }
 
+  function handleSaveCategoryEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCategory) return;
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get('name') || '').trim();
+    const color = String(form.get('color') || '#C87B45');
+    void run(async () => {
+      const updated = await apiRequest<Category>(`/catalog/categories/${editingCategory.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name, color }),
+      });
+      setCatalog((current) =>
+        current.map((cat) => (cat.id === editingCategory.id ? { ...cat, name: updated.name, color: updated.color } : cat)),
+      );
+      setEditingCategory(null);
+    }, 'Categoría actualizada.');
+  }
+
+  function handleDeleteCategory(category: Category) {
+    void run(async () => {
+      await apiRequest(`/catalog/categories/${category.id}`, {
+        method: 'DELETE',
+      });
+      setCatalog((current) => current.filter((cat) => cat.id !== category.id));
+      setCategoryToDelete(null);
+      if (categoryFilter === category.id) setCategoryFilter('');
+      if (catalogCategoryFilter === category.id) setCatalogCategoryFilter('');
+    }, `Categoría "${category.name}" eliminada.`);
+  }
+
+  function handleMoveCategory(categoryId: string, direction: 'prev' | 'next') {
+    const index = catalog.findIndex((c) => c.id === categoryId);
+    if (index === -1) return;
+    const targetIndex = direction === 'prev' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= catalog.length) return;
+
+    const newCatalog = [...catalog];
+    const [moved] = newCatalog.splice(index, 1);
+    newCatalog.splice(targetIndex, 0, moved);
+
+    const items = newCatalog.map((cat, idx) => ({ id: cat.id, sortOrder: idx }));
+    setCatalog(newCatalog);
+
+    void run(async () => {
+      await apiRequest('/catalog/categories/reorder', {
+        method: 'PATCH',
+        body: JSON.stringify({ items }),
+      });
+    }, 'Orden de categorías guardado.');
+  }
+
+  function handleQuickRestock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!quickRestockStock) return;
+    const amount = Number(quickRestockAmount);
+    const unitCost = Number(quickRestockCost || quickRestockStock.averageUnitCost || 0);
+    if (!amount || amount <= 0) return;
+
+    void run(async () => {
+      const updated = await apiRequest<Stock>(
+        `/inventory/stocks/${quickRestockStock.id}/restock`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            quantity: amount,
+            unitCost,
+          }),
+        },
+      );
+      setStocks((current) =>
+        current.map((item) => (item.id === quickRestockStock.id ? updated : item)),
+      );
+      setQuickRestockStock(null);
+      setQuickRestockAmount('');
+      setQuickRestockCost('');
+      await loadInventoryMovements();
+    }, `Entrada registrada: se sumaron ${amount} ${quickRestockStock.ingredient.unit} de ${quickRestockStock.ingredient.name}.`);
+  }
+
   function updateRecipe(index: number, field: 'ingredientId' | 'quantity', value: string | number) {
     setRecipeRows((rows) => rows.map((row, rowIndex) =>
       rowIndex === index ? { ...row, [field]: value } : row,
@@ -1524,10 +1613,12 @@ export default function CoffeeOSApp() {
     });
     setRecipeRows([{ ingredientId: '', quantity: 1 }]);
     setModifierGroups([blankModifierGroup()]);
+    setCatalogViewMode('list');
   }
 
   function beginEditProduct(categoryId: string, product: Product) {
     setEditingProduct(product);
+    setCatalogViewMode('builder');
     setProductDraft({
       categoryId,
       name: product.name,
@@ -1951,6 +2042,30 @@ export default function CoffeeOSApp() {
     );
   const lowStock = stocks.filter((stock) => Number(stock.quantity) <= Number(stock.minQuantity));
 
+  const catalogSearchLower = catalogSearch.trim().toLowerCase();
+  const filteredCatalogProducts = catalog
+    .filter((cat) => !catalogCategoryFilter || cat.id === catalogCategoryFilter)
+    .flatMap((cat) => cat.products.map((p) => ({ ...p, categoryId: cat.id, categoryName: cat.name, categoryColor: cat.color })))
+    .filter(
+      (product) =>
+        !catalogSearchLower ||
+        product.name.toLowerCase().includes(catalogSearchLower) ||
+        (product.description && product.description.toLowerCase().includes(catalogSearchLower)),
+    );
+
+  const inventorySearchLower = inventorySearch.trim().toLowerCase();
+  const filteredStocks = stocks.filter((stock) => {
+    const matchesSearch =
+      !inventorySearchLower ||
+      stock.ingredient.name.toLowerCase().includes(inventorySearchLower) ||
+      stock.ingredient.unit.toLowerCase().includes(inventorySearchLower);
+    if (!matchesSearch) return false;
+    const isLow = Number(stock.quantity) <= Number(stock.minQuantity);
+    if (inventoryStockFilter === 'low') return isLow;
+    if (inventoryStockFilter === 'ok') return !isLow;
+    return true;
+  });
+
   return (
     <main className="coffee-app">
       <aside className="coffee-sidebar">
@@ -2025,6 +2140,13 @@ export default function CoffeeOSApp() {
                   onClick={() => setSetupTab('appearance')}
                 >
                   🎨 Apariencia y Tema
+                </button>
+                <button
+                  type="button"
+                  className={setupTab === 'ingredients' ? 'active' : ''}
+                  onClick={() => setSetupTab('ingredients')}
+                >
+                  📦 Insumos y Recetas Maestras ({stocks.length})
                 </button>
               </div>
 
@@ -2317,6 +2439,83 @@ export default function CoffeeOSApp() {
                   </div>
                 </div>
               )}
+
+              {setupTab === 'ingredients' && (
+                <div className="inventory-layout" style={{ marginTop: '16px' }}>
+                  <form className="panel coffee-form" onSubmit={submitIngredient}>
+                    <div className="panel-title">
+                      <div>
+                        <small>CATÁLOGO MAESTRO</small>
+                        <h3>Nuevo Insumo Base</h3>
+                      </div>
+                    </div>
+                    <p className="field-help" style={{ margin: '-6px 0 12px' }}>
+                      Define materias primas o insumos que se consumen en las recetas de venta o sub-recetas.
+                    </p>
+                    <label>Nombre del insumo<input name="name" placeholder="Ej. Jarabe de Vainilla, Leche Entera" required /></label>
+                    <label>Unidad de medida<select name="unit" defaultValue="g"><option value="pieza">pieza</option><option value="g">gramos (g)</option><option value="kg">kilogramos (kg)</option><option value="ml">mililitros (ml)</option><option value="l">litros (l)</option></select></label>
+                    <div className="form-row">
+                      <label>Cantidad inicial en stock<input name="quantity" type="number" step="any" min="0" required /></label>
+                      <label>Costo unitario de compra ($)<input name="initialUnitCost" type="number" step="any" min="0" defaultValue="0" required /></label>
+                    </div>
+                    <label>Avisar al llegar a stock mínimo<input name="minQuantity" type="number" step="any" min="0" required /></label>
+                    <button className="coffee-primary compact" disabled={busy}>+ Registrar en Catálogo Maestro</button>
+                  </form>
+
+                  <div className="panel table-panel">
+                    <div className="panel-title">
+                      <div>
+                        <small>CONFIGURACIÓN DE FÓRMULAS</small>
+                        <h3>Insumos Registrados y Sub-recetas</h3>
+                      </div>
+                      <span>{stocks.length} insumos</span>
+                    </div>
+                    <p className="field-help" style={{ margin: '0 0 14px' }}>
+                      Configura recetas de preparación para insumos compuestos para que descuenten sus materias primas.
+                    </p>
+                    <div className="stock-grid">
+                      {stocks.map((stock) => {
+                        const isLow = Number(stock.quantity) <= Number(stock.minQuantity);
+                        const recipe = inventoryRecipes.find((r) => r.outputIngredient.id === stock.ingredient.id);
+                        return (
+                          <article key={stock.id} className={isLow ? 'low' : ''}>
+                            <div>
+                              <div>
+                                <strong>{stock.ingredient.name}</strong>
+                                <small>{stock.ingredient.unit}</small>
+                              </div>
+                              {recipe && (
+                                <span
+                                  className={`recipe-badge ${recipe.deductMode === 'auto_on_sale' ? 'auto' : recipe.deductMode === 'hybrid' ? 'hybrid' : 'manual'}`}
+                                  title={`Modo de descuento: ${recipe.deductMode}`}
+                                >
+                                  {recipe.deductMode === 'auto_on_sale' && '⚡ Auto en venta'}
+                                  {recipe.deductMode === 'hybrid' && '🔄 Híbrido'}
+                                  {recipe.deductMode === 'manual_prep' && '👨‍🍳 Manual'}
+                                </span>
+                              )}
+                            </div>
+                            <b>{Number(stock.quantity).toLocaleString('es-MX')} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--muted)' }}>{stock.ingredient.unit}</span></b>
+                            <p>Mínimo: {Number(stock.minQuantity).toLocaleString('es-MX')} · Costo promedio: {money(stock.averageUnitCost)}</p>
+                            <div className="stock-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                              <button type="button" onClick={() => setEditingStock(stock)}>✏️ Editar Insumo</button>
+                              <button
+                                type="button"
+                                className={recipe ? 'stock-btn-subrecipe' : ''}
+                                onClick={() => openIngredientRecipe(stock)}
+                                title={recipe ? 'Ver o modificar receta de este insumo' : 'Crear receta para este insumo'}
+                              >
+                                {recipe ? '⚙ Sub-receta' : '+ Sub-receta'}
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                      {stocks.length === 0 && <div className="blank-state">Todavía no hay insumos base creados.</div>}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2457,69 +2656,156 @@ export default function CoffeeOSApp() {
 
               {inventorySubView === 'stocks' && (
                 <>
-              <div className="inventory-layout">
-                <form className="panel coffee-form" onSubmit={submitIngredient}>
-                  <h3>Nuevo ingrediente</h3>
-                  <label>Nombre<input name="name" placeholder="Nutella" required /></label>
-                  <label>Unidad<select name="unit" defaultValue="g"><option value="pieza">pieza</option><option value="g">gramos (g)</option><option value="kg">kilogramos (kg)</option><option value="ml">mililitros (ml)</option><option value="l">litros (l)</option></select></label>
-                  <div className="form-row"><label>Cantidad inicial<input name="quantity" type="number" step="any" min="0" required /></label><label>Costo unitario inicial<input name="initialUnitCost" type="number" step="any" min="0" defaultValue="0" required /></label></div>
-                  <label>Avisar al llegar a<input name="minQuantity" type="number" step="any" min="0" required /></label>
-                  <button className="coffee-primary compact" disabled={busy}>Agregar al inventario</button>
-                </form>
-                <div className="panel table-panel">
-                  <div className="panel-title"><h3>Existencias actuales</h3><span>{stocks.length} ingredientes</span></div>
-                  <div className="stock-grid">
-                    {stocks.map((stock) => {
-                      const isLow = Number(stock.quantity) <= Number(stock.minQuantity);
-                      const recipe = inventoryRecipes.find((r) => r.outputIngredient.id === stock.ingredient.id);
-                      return (
-                        <article key={stock.id} className={isLow ? 'low' : ''}>
+              <div className="panel" style={{ marginBottom: '16px' }}>
+                <div className="inventory-ops-bar">
+                  <div className="catalog-search-box" style={{ maxWidth: '380px' }}>
+                    <span style={{ fontSize: '14px', color: 'var(--muted)' }}>🔍</span>
+                    <input
+                      type="text"
+                      placeholder="Buscar por insumo o unidad..."
+                      value={inventorySearch}
+                      onChange={(e) => setInventorySearch(e.target.value)}
+                    />
+                    {inventorySearch && (
+                      <button
+                        type="button"
+                        onClick={() => setInventorySearch('')}
+                        style={{ border: 0, background: 'transparent', color: 'var(--muted)', cursor: 'pointer', padding: 0 }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="catalog-category-pills">
+                    <button
+                      type="button"
+                      className={inventoryStockFilter === 'all' ? 'active' : ''}
+                      onClick={() => setInventoryStockFilter('all')}
+                    >
+                      Todos ({stocks.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={inventoryStockFilter === 'low' ? 'active' : ''}
+                      onClick={() => setInventoryStockFilter('low')}
+                      style={inventoryStockFilter === 'low' ? { borderColor: 'var(--danger)', color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.12)' } : {}}
+                    >
+                      ⚠️ Stock Bajo ({lowStock.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={inventoryStockFilter === 'ok' ? 'active' : ''}
+                      onClick={() => setInventoryStockFilter('ok')}
+                    >
+                      ✓ Óptimo ({stocks.length - lowStock.length})
+                    </button>
+                  </div>
+
+                  <div className="inventory-ops-actions">
+                    <button
+                      type="button"
+                      className="coffee-primary compact"
+                      onClick={() => {
+                        if (stocks.length > 0) {
+                          setQuickRestockStock(stocks[0]);
+                          setQuickRestockAmount('');
+                          setQuickRestockCost(String(stocks[0].averageUnitCost || ''));
+                        }
+                      }}
+                      disabled={stocks.length === 0}
+                    >
+                      📥 + Entrada de Stock / Compra
+                    </button>
+                    <button
+                      type="button"
+                      className="coffee-link"
+                      onClick={() => {
+                        setView('setup');
+                        setSetupTab('ingredients');
+                      }}
+                      title="Crear nuevos insumos base o editar fórmulas de sub-recetas"
+                    >
+                      ⚙️ Maestro de Insumos →
+                    </button>
+                  </div>
+                </div>
+
+                <div className="panel-title" style={{ marginTop: '12px', borderTop: '1px solid var(--line)', paddingTop: '12px' }}>
+                  <div>
+                    <small>EXISTENCIAS OPERATIVAS</small>
+                    <h3>Materias Primas e Insumos ({filteredStocks.length})</h3>
+                  </div>
+                  <span>{filteredStocks.length} de {stocks.length} mostrados</span>
+                </div>
+
+                <div className="stock-grid" style={{ marginTop: '14px' }}>
+                  {filteredStocks.map((stock) => {
+                    const isLow = Number(stock.quantity) <= Number(stock.minQuantity);
+                    const recipe = inventoryRecipes.find((r) => r.outputIngredient.id === stock.ingredient.id);
+                    return (
+                      <article key={stock.id} className={isLow ? 'low' : ''}>
+                        <div>
                           <div>
-                            <div>
-                              <strong>{stock.ingredient.name}</strong>
-                              <small>{stock.ingredient.unit}</small>
-                            </div>
-                            {recipe && (
-                              <span
-                                className={`recipe-badge ${recipe.deductMode === 'auto_on_sale' ? 'auto' : recipe.deductMode === 'hybrid' ? 'hybrid' : 'manual'}`}
-                                title={`Modo de descuento: ${recipe.deductMode}`}
-                              >
-                                {recipe.deductMode === 'auto_on_sale' && '⚡ Auto en venta'}
-                                {recipe.deductMode === 'hybrid' && '🔄 Híbrido'}
-                                {recipe.deductMode === 'manual_prep' && '👨‍🍳 Manual'}
-                              </span>
-                            )}
+                            <strong>{stock.ingredient.name}</strong>
+                            <small>{stock.ingredient.unit}</small>
                           </div>
-                          <b>{Number(stock.quantity).toLocaleString('es-MX')}</b>
-                          <p>Mínimo: {Number(stock.minQuantity).toLocaleString('es-MX')} · Costo promedio: {money(stock.averageUnitCost)}</p>
-                          {isLow && <span>Reponer pronto</span>}
-                          <div className="stock-actions" style={{ display: 'grid', gridTemplateColumns: recipe ? '1fr 1fr' : '1fr 1fr', gap: '6px' }}>
-                            <button type="button" onClick={() => restock(stock)}>+ Existencia</button>
-                            <button type="button" onClick={() => setEditingStock(stock)}>Editar</button>
+                          {recipe && (
+                            <span
+                              className={`recipe-badge ${recipe.deductMode === 'auto_on_sale' ? 'auto' : recipe.deductMode === 'hybrid' ? 'hybrid' : 'manual'}`}
+                              title={`Modo de descuento: ${recipe.deductMode}`}
+                            >
+                              {recipe.deductMode === 'auto_on_sale' && '⚡ Auto en venta'}
+                              {recipe.deductMode === 'hybrid' && '🔄 Híbrido'}
+                              {recipe.deductMode === 'manual_prep' && '👨‍🍳 Manual'}
+                            </span>
+                          )}
+                        </div>
+                        <b>{Number(stock.quantity).toLocaleString('es-MX')} <span style={{ fontSize: '13px', fontWeight: 400, color: 'var(--muted)' }}>{stock.ingredient.unit}</span></b>
+                        <p>Mínimo: {Number(stock.minQuantity).toLocaleString('es-MX')} · Costo prom.: {money(stock.averageUnitCost)}</p>
+                        {isLow && <span style={{ color: 'var(--danger)', fontSize: '11px', fontWeight: 700 }}>⚠️ Reponer pronto</span>}
+                        <div className="stock-actions" style={{ display: 'grid', gridTemplateColumns: recipe ? '1fr 1fr' : '1.3fr 1fr', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="coffee-primary compact"
+                            onClick={() => {
+                              setQuickRestockStock(stock);
+                              setQuickRestockAmount('');
+                              setQuickRestockCost(String(stock.averageUnitCost || ''));
+                            }}
+                          >
+                            📥 + Entrada
+                          </button>
+                          <button type="button" onClick={() => setEditingStock(stock)}>Editar</button>
+                          {recipe && (
                             <button
                               type="button"
-                              className={recipe ? 'stock-btn-subrecipe' : ''}
-                              onClick={() => openIngredientRecipe(stock)}
-                              title={recipe ? 'Ver o modificar receta de este ingrediente' : 'Crear receta para este ingrediente'}
+                              className="stock-btn-prepare"
+                              onClick={() => executeInventoryRecipe(recipe)}
+                              title="Registrar preparación de unidades de este ingrediente"
                             >
-                              {recipe ? '⚙ Receta' : '+ Receta'}
+                              Preparar
                             </button>
-                            {recipe && (
-                              <button
-                                type="button"
-                                className="stock-btn-prepare"
-                                onClick={() => executeInventoryRecipe(recipe)}
-                                title="Registrar preparación de unidades de este ingrediente"
-                              >
-                                Preparar
-                              </button>
-                            )}
-                          </div>
-                        </article>
-                      );
-                    })}
-                    {stocks.length === 0 && <div className="blank-state">Todavía no hay ingredientes. Agrega el primero.</div>}
-                  </div>
+                          )}
+                          {recipe && (
+                            <button
+                              type="button"
+                              className="stock-btn-subrecipe"
+                              onClick={() => openIngredientRecipe(stock)}
+                              title="Ver o modificar receta de este ingrediente"
+                            >
+                              ⚙ Receta
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {filteredStocks.length === 0 && (
+                    <div className="blank-state">
+                      {stocks.length === 0 ? 'No hay insumos registrados en el inventario.' : 'No se encontraron insumos con los filtros seleccionados.'}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2724,25 +3010,428 @@ export default function CoffeeOSApp() {
             <div className="page-stack">
               <div className="intro"><div><small>MENÚ CONFIGURABLE</small><h2>Categorías, productos, recetas y extras</h2><p>El precio y el consumo de inventario se guardan en el producto. Los extras pueden sumar precio y descontar otro ingrediente.</p></div></div>
               <div className="catalog-layout">
-                <div className="side-forms">
-                  <form className="panel coffee-form" onSubmit={submitCategory}>
-                    <h3>Nueva categoría</h3>
-                    <label>Nombre<input name="name" placeholder="Bebidas Calientes" required /></label>
-                    <label>Color<input name="color" type="color" defaultValue="#C87B45" /></label>
-                    <button className="coffee-primary compact">Crear categoría</button>
-                  </form>
-                  <div className="panel category-list"><h3>Categorías</h3>{catalog.map((category) => <span key={category.id}><i style={{ background: category.color }} />{category.name}<b>{category.products.length}</b></span>)}</div>
-                  <div className="panel catalog-product-list"><h3>Productos guardados</h3>{catalog.flatMap((category) => category.products.map((product) => <button type="button" key={product.id} onClick={() => beginEditProduct(category.id, product)}><span><strong>{product.name}</strong><small>{category.name} · {product.ingredients.length} ingredientes · {product.modifierGroups.reduce((sum, group) => sum + group.options.length, 0)} opciones</small></span><b>Editar</b></button>))}{catalog.every((category) => category.products.length === 0) && <p>Todavía no hay productos.</p>}</div>
+                {/* ── GESTOR VISUAL Y REORDENAMIENTO DE CATEGORÍAS ── */}
+                <div className="panel catalog-top-panel">
+                  <div className="panel-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                      <small>ORDEN Y CATEGORÍAS DEL MENÚ</small>
+                      <h3>🏷️ Gestor de Categorías ({catalog.length})</h3>
+                    </div>
+                    <form onSubmit={submitCategory} style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input name="name" placeholder="Nueva categoría..." style={{ minWidth: '170px', padding: '6px 10px', fontSize: '12px' }} required />
+                      <input name="color" type="color" defaultValue="#C87B45" style={{ width: '36px', height: '32px', padding: '2px', border: '1px solid var(--line)', borderRadius: '6px', cursor: 'pointer' }} title="Color de la categoría" />
+                      <button className="coffee-primary compact" disabled={busy}>+ Crear</button>
+                    </form>
+                  </div>
+                  <p className="field-help" style={{ margin: '-4px 0 6px' }}>
+                    Usa las flechas ◀ y ▶ para cambiar el orden en que se mostrarán las pestañas en el Punto de Venta (POS).
+                  </p>
+                  <div className="category-manager-grid">
+                    {catalog.map((cat, idx) => (
+                      <div className="category-chip-item" key={cat.id}>
+                        <div className="category-chip-info">
+                          <i style={{ background: cat.color }} />
+                          <strong>{cat.name}</strong>
+                          <span>({cat.products.length})</span>
+                        </div>
+                        <div className="category-chip-actions">
+                          <button
+                            type="button"
+                            title="Mover a la izquierda / antes"
+                            disabled={idx === 0 || busy}
+                            onClick={() => handleMoveCategory(cat.id, 'prev')}
+                          >
+                            ◀
+                          </button>
+                          <button
+                            type="button"
+                            title="Mover a la derecha / después"
+                            disabled={idx === catalog.length - 1 || busy}
+                            onClick={() => handleMoveCategory(cat.id, 'next')}
+                          >
+                            ▶
+                          </button>
+                          <button
+                            type="button"
+                            title="Editar nombre y color"
+                            disabled={busy}
+                            onClick={() => setEditingCategory(cat)}
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            type="button"
+                            title="Eliminar categoría"
+                            disabled={busy}
+                            onClick={() => setCategoryToDelete(cat)}
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {catalog.length === 0 && <p className="field-help">No hay categorías registradas todavía.</p>}
+                  </div>
                 </div>
-                <form className="panel coffee-form product-builder" onSubmit={submitProduct}>
-                  <div className="panel-title"><div><small>{editingProduct ? 'EDITAR PRODUCTO' : 'NUEVO PRODUCTO'}</small><h3>{editingProduct ? `Corrige ${editingProduct.name}` : 'Configura lo que vendes'}</h3></div>{editingProduct && <button type="button" className="coffee-link" onClick={() => resetProductEditor()}>Cancelar edición</button>}</div>
-                  <div className="form-row"><label>Categoría<select name="categoryId" value={productDraft.categoryId} onChange={(event) => setProductDraft((current) => ({ ...current, categoryId: event.target.value }))} required><option value="">Selecciona</option>{catalog.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Precio base<input name="price" type="number" step="0.01" min="0" value={productDraft.price} onChange={(event) => setProductDraft((current) => ({ ...current, price: event.target.value }))} required /></label></div>
-                  <label>Nombre<input name="name" placeholder="Capuchino de la Casa" value={productDraft.name} onChange={(event) => setProductDraft((current) => ({ ...current, name: event.target.value }))} required /></label>
-                  <label>Descripción<input name="description" placeholder="Café espresso con leche espumada y jarabe artesanal" value={productDraft.description} onChange={(event) => setProductDraft((current) => ({ ...current, description: event.target.value }))} /></label>
-                  <fieldset><legend>Receta base que se descuenta por unidad</legend>{recipeRows.map((row, index) => <div className="builder-row" key={index}><select value={row.ingredientId} onChange={(event) => updateRecipe(index, 'ingredientId', event.target.value)}><option value="">Ingrediente</option>{stocks.map((stock) => <option key={stock.ingredient.id} value={stock.ingredient.id}>{stock.ingredient.name} ({stock.ingredient.unit})</option>)}</select><input type="number" step="any" min="0" value={row.quantity} onChange={(event) => updateRecipe(index, 'quantity', Number(event.target.value))} /><button type="button" onClick={() => setRecipeRows((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>×</button></div>)}<button type="button" className="coffee-link" onClick={() => setRecipeRows((rows) => [...rows, { ingredientId: '', quantity: 1 }])}>+ Añadir ingrediente a la receta</button></fieldset>
-                  <fieldset><legend>Opciones y extras</legend><p className="field-help">Cada opción puede sumar precio y consumir un ingrediente. El máximo indica cuántas opciones puede elegir el cliente.</p>{modifierGroups.map((group, groupIndex) => <div className="modifier-builder" key={groupIndex}><div className="builder-row group-head"><input placeholder="Grupo: Tipo de leche, tamaño, jarabe…" value={group.name} onChange={(event) => updateGroup(groupIndex, 'name', event.target.value)} /><label className="check-label"><input type="checkbox" checked={group.required} onChange={(event) => updateGroup(groupIndex, 'required', event.target.checked)} />Obligatorio</label><input aria-label="Máximo" title="Cantidad máxima que puede elegir el cliente" type="number" min="1" value={group.maxSelections} onChange={(event) => updateGroup(groupIndex, 'maxSelections', Number(event.target.value))} /><button type="button" title="Eliminar grupo" onClick={() => setModifierGroups((groups) => groups.filter((_, index) => index !== groupIndex))}>×</button></div>{group.options.map((option, optionIndex) => <div className="option-row" key={option.id ?? optionIndex}><input placeholder="Opción: Leche de almendra, shot extra…" value={option.name} onChange={(event) => updateOption(groupIndex, optionIndex, 'name', event.target.value)} /><input aria-label="Precio extra" type="number" step="0.01" min="0" placeholder="+ precio" value={option.priceDelta} onChange={(event) => updateOption(groupIndex, optionIndex, 'priceDelta', Number(event.target.value))} /><select value={option.ingredientId} onChange={(event) => updateOption(groupIndex, optionIndex, 'ingredientId', event.target.value)}><option value="">Sin consumo extra</option>{stocks.map((stock) => <option key={stock.ingredient.id} value={stock.ingredient.id}>{stock.ingredient.name} ({stock.ingredient.unit})</option>)}</select><input aria-label="Consumo" title="Cantidad que se descontará del inventario" type="number" step="any" min="0" value={option.quantity} onChange={(event) => updateOption(groupIndex, optionIndex, 'quantity', Number(event.target.value))} /><button type="button" className="remove-option" title={`Eliminar opción ${option.name || ''}`} onClick={() => removeOption(groupIndex, optionIndex)}>×</button></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => groups.map((item, index) => index === groupIndex ? { ...item, options: [...item.options, { name: '', priceDelta: 0, ingredientId: '', quantity: 0 }] } : item))}>+ Añadir opción</button></div>)}<button type="button" className="coffee-link" onClick={() => setModifierGroups((groups) => [...groups, blankModifierGroup()])}>+ Añadir grupo de opciones</button></fieldset>
-                  <div className="product-actions"><button className="coffee-primary" disabled={busy || catalog.length === 0}>{editingProduct ? 'Guardar cambios de producto y receta' : 'Guardar producto'}</button>{editingProduct && <button type="button" className="delete-product-button" disabled={busy} onClick={() => setDeletingProduct(editingProduct)}>Eliminar producto</button>}</div>
-                </form>
+
+                {/* ── MODO 1: CATÁLOGO ORDENADO EN CUADRÍCULA CON BÚSQUEDA Y FILTROS ── */}
+                {catalogViewMode === 'list' && (
+                  <div className="panel">
+                    <div className="catalog-filter-bar">
+                      <div className="catalog-search-box">
+                        <span style={{ fontSize: '14px', color: 'var(--muted)' }}>🔍</span>
+                        <input
+                          type="text"
+                          placeholder="Buscar productos por nombre o descripción..."
+                          value={catalogSearch}
+                          onChange={(e) => setCatalogSearch(e.target.value)}
+                        />
+                        {catalogSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setCatalogSearch('')}
+                            style={{ border: 0, background: 'transparent', color: 'var(--muted)', cursor: 'pointer', padding: 0 }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        className="coffee-primary"
+                        onClick={() => {
+                          resetProductEditor(catalogCategoryFilter || (catalog[0]?.id ?? ''));
+                          setCatalogViewMode('builder');
+                        }}
+                        disabled={catalog.length === 0}
+                      >
+                        + Nuevo Producto
+                      </button>
+                    </div>
+
+                    <div className="catalog-category-pills">
+                      <button
+                        type="button"
+                        className={!catalogCategoryFilter ? 'active' : ''}
+                        onClick={() => setCatalogCategoryFilter('')}
+                      >
+                        Todas ({catalog.reduce((acc, c) => acc + c.products.length, 0)})
+                      </button>
+                      {catalog.map((cat) => (
+                        <button
+                          type="button"
+                          key={cat.id}
+                          className={catalogCategoryFilter === cat.id ? 'active' : ''}
+                          onClick={() => setCatalogCategoryFilter(cat.id)}
+                        >
+                          <i style={{ width: '8px', height: '8px', borderRadius: '50%', background: cat.color, display: 'inline-block' }} />
+                          {cat.name} ({cat.products.length})
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="panel-title" style={{ marginTop: '14px', borderTop: '1px solid var(--line)', paddingTop: '12px' }}>
+                      <div>
+                        <small>CATÁLOGO DE PRODUCTOS</small>
+                        <h3>Productos Registrados ({filteredCatalogProducts.length})</h3>
+                      </div>
+                      <span>{filteredCatalogProducts.length} producto(s)</span>
+                    </div>
+
+                    <div className="catalog-products-grid" style={{ marginTop: '14px' }}>
+                      {filteredCatalogProducts.map((product) => (
+                        <article className="catalog-product-card" key={product.id}>
+                          <div className="catalog-product-card-head">
+                            <div>
+                              <span className="catalog-product-category-tag">
+                                <i style={{ background: product.categoryColor }} />
+                                {product.categoryName}
+                              </span>
+                              <strong style={{ display: 'block', marginTop: '4px' }}>{product.name}</strong>
+                            </div>
+                            <span className="price-badge">{money(product.price)}</span>
+                          </div>
+
+                          {product.description && (
+                            <p className="catalog-product-desc">{product.description}</p>
+                          )}
+
+                          <div className="catalog-product-meta">
+                            <span className="catalog-product-meta-pill">
+                              📦 {product.ingredients.length} {product.ingredients.length === 1 ? 'insumo' : 'insumos'}
+                            </span>
+                            <span className="catalog-product-meta-pill">
+                              ⚙️ {product.modifierGroups.length} {product.modifierGroups.length === 1 ? 'grupo extra' : 'grupos extras'}
+                            </span>
+                            {product.modifierGroups.some((g) => g.options.length > 0) && (
+                              <span className="catalog-product-meta-pill">
+                                ✨ {product.modifierGroups.reduce((acc, g) => acc + g.options.length, 0)} opciones
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="catalog-product-card-actions">
+                            <button
+                              type="button"
+                              className="edit-btn"
+                              onClick={() => beginEditProduct(product.categoryId, product)}
+                            >
+                              ✏️ Modificar
+                            </button>
+                            <button
+                              type="button"
+                              className="del-btn"
+                              onClick={() => setDeletingProduct(product)}
+                            >
+                              🗑️ Eliminar
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+
+                    {filteredCatalogProducts.length === 0 && (
+                      <div className="blank-state" style={{ marginTop: '16px' }}>
+                        {catalog.length === 0
+                          ? 'Crea una categoría arriba para empezar a registrar productos.'
+                          : 'No se encontraron productos con los filtros seleccionados.'}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── MODO 2: EDITOR / BUILDER DE PRODUCTOS Y RECETAS ── */}
+                {catalogViewMode === 'builder' && (
+                  <div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <button
+                        type="button"
+                        className="coffee-link"
+                        onClick={() => resetProductEditor()}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+                      >
+                        ← Volver al Catálogo de Productos
+                      </button>
+                    </div>
+                    <form className="panel coffee-form product-builder" onSubmit={submitProduct}>
+                      <div className="panel-title">
+                        <div>
+                          <small>{editingProduct ? 'EDITAR PRODUCTO' : 'NUEVO PRODUCTO'}</small>
+                          <h3>{editingProduct ? `Corrige ${editingProduct.name}` : 'Configura lo que vendes'}</h3>
+                        </div>
+                        <button type="button" className="coffee-link" onClick={() => resetProductEditor()}>
+                          Cancelar y volver
+                        </button>
+                      </div>
+                      <div className="form-row">
+                        <label>
+                          Categoría
+                          <select
+                            name="categoryId"
+                            value={productDraft.categoryId}
+                            onChange={(event) => setProductDraft((current) => ({ ...current, categoryId: event.target.value }))}
+                            required
+                          >
+                            <option value="">Selecciona</option>
+                            {catalog.map((category) => (
+                              <option key={category.id} value={category.id}>{category.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Precio base
+                          <input
+                            name="price"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={productDraft.price}
+                            onChange={(event) => setProductDraft((current) => ({ ...current, price: event.target.value }))}
+                            required
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        Nombre
+                        <input
+                          name="name"
+                          placeholder="Capuchino de la Casa"
+                          value={productDraft.name}
+                          onChange={(event) => setProductDraft((current) => ({ ...current, name: event.target.value }))}
+                          required
+                        />
+                      </label>
+                      <label>
+                        Descripción
+                        <input
+                          name="description"
+                          placeholder="Café espresso con leche espumada y jarabe artesanal"
+                          value={productDraft.description}
+                          onChange={(event) => setProductDraft((current) => ({ ...current, description: event.target.value }))}
+                        />
+                      </label>
+                      <fieldset>
+                        <legend>Receta base que se descuenta por unidad</legend>
+                        {recipeRows.map((row, index) => (
+                          <div className="builder-row" key={index}>
+                            <select
+                              value={row.ingredientId}
+                              onChange={(event) => updateRecipe(index, 'ingredientId', event.target.value)}
+                            >
+                              <option value="">Ingrediente</option>
+                              {stocks.map((stock) => (
+                                <option key={stock.ingredient.id} value={stock.ingredient.id}>
+                                  {stock.ingredient.name} ({stock.ingredient.unit})
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={row.quantity}
+                              onChange={(event) => updateRecipe(index, 'quantity', Number(event.target.value))}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setRecipeRows((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className="coffee-link"
+                          onClick={() => setRecipeRows((rows) => [...rows, { ingredientId: '', quantity: 1 }])}
+                        >
+                          + Añadir ingrediente a la receta
+                        </button>
+                      </fieldset>
+                      <fieldset>
+                        <legend>Opciones y extras</legend>
+                        <p className="field-help">Cada opción puede sumar precio y consumir un ingrediente. El máximo indica cuántas opciones puede elegir el cliente.</p>
+                        {modifierGroups.map((group, groupIndex) => (
+                          <div className="modifier-builder" key={groupIndex}>
+                            <div className="builder-row group-head">
+                              <input
+                                placeholder="Grupo: Tipo de leche, tamaño, jarabe…"
+                                value={group.name}
+                                onChange={(event) => updateGroup(groupIndex, 'name', event.target.value)}
+                              />
+                              <label className="check-label">
+                                <input
+                                  type="checkbox"
+                                  checked={group.required}
+                                  onChange={(event) => updateGroup(groupIndex, 'required', event.target.checked)}
+                                />
+                                Obligatorio
+                              </label>
+                              <input
+                                aria-label="Máximo"
+                                title="Cantidad máxima que puede elegir el cliente"
+                                type="number"
+                                min="1"
+                                value={group.maxSelections}
+                                onChange={(event) => updateGroup(groupIndex, 'maxSelections', Number(event.target.value))}
+                              />
+                              <button
+                                type="button"
+                                title="Eliminar grupo"
+                                onClick={() => setModifierGroups((groups) => groups.filter((_, index) => index !== groupIndex))}
+                              >
+                                ×
+                              </button>
+                            </div>
+                            {group.options.map((option, optionIndex) => (
+                              <div className="option-row" key={option.id ?? optionIndex}>
+                                <input
+                                  placeholder="Opción: Leche de almendra, shot extra…"
+                                  value={option.name}
+                                  onChange={(event) => updateOption(groupIndex, optionIndex, 'name', event.target.value)}
+                                />
+                                <input
+                                  aria-label="Precio extra"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  placeholder="+ precio"
+                                  value={option.priceDelta}
+                                  onChange={(event) => updateOption(groupIndex, optionIndex, 'priceDelta', Number(event.target.value))}
+                                />
+                                <select
+                                  value={option.ingredientId}
+                                  onChange={(event) => updateOption(groupIndex, optionIndex, 'ingredientId', event.target.value)}
+                                >
+                                  <option value="">Sin consumo extra</option>
+                                  {stocks.map((stock) => (
+                                    <option key={stock.ingredient.id} value={stock.ingredient.id}>
+                                      {stock.ingredient.name} ({stock.ingredient.unit})
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  aria-label="Consumo"
+                                  title="Cantidad que se descontará del inventario"
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  value={option.quantity}
+                                  onChange={(event) => updateOption(groupIndex, optionIndex, 'quantity', Number(event.target.value))}
+                                />
+                                <button
+                                  type="button"
+                                  className="remove-option"
+                                  title={`Eliminar opción ${option.name || ''}`}
+                                  onClick={() => removeOption(groupIndex, optionIndex)}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              className="coffee-link"
+                              onClick={() => setModifierGroups((groups) => groups.map((item, index) => index === groupIndex ? { ...item, options: [...item.options, { name: '', priceDelta: 0, ingredientId: '', quantity: 0 }] } : item))}
+                            >
+                              + Añadir opción
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className="coffee-link"
+                          onClick={() => setModifierGroups((groups) => [...groups, blankModifierGroup()])}
+                        >
+                          + Añadir grupo de opciones
+                        </button>
+                      </fieldset>
+                      <div className="product-actions">
+                        <button className="coffee-primary" disabled={busy || catalog.length === 0}>
+                          {editingProduct ? 'Guardar cambios de producto y receta' : 'Guardar producto'}
+                        </button>
+                        {editingProduct && (
+                          <button
+                            type="button"
+                            className="delete-product-button"
+                            disabled={busy}
+                            onClick={() => setDeletingProduct(editingProduct)}
+                          >
+                            Eliminar producto
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="coffee-link"
+                          onClick={() => resetProductEditor()}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -3144,6 +3833,108 @@ export default function CoffeeOSApp() {
           )}
         </div>
       </section>
+
+      {/* ── MODAL EDITAR CATEGORÍA ── */}
+      {editingCategory && (
+        <div className="modal-backdrop">
+          <form className="modifier-modal coffee-form" onSubmit={handleSaveCategoryEdit}>
+            <button type="button" className="modal-close" onClick={() => setEditingCategory(null)}>×</button>
+            <small>EDITAR CATEGORÍA</small>
+            <h2>{editingCategory.name}</h2>
+            <p>Modifica el nombre o color con el que se identificará esta categoría en el POS.</p>
+            <label>
+              Nombre de la categoría
+              <input name="name" defaultValue={editingCategory.name} required />
+            </label>
+            <label>
+              Color distintivo
+              <input name="color" type="color" defaultValue={editingCategory.color || '#C87B45'} style={{ width: '60px', height: '40px', padding: '2px', cursor: 'pointer' }} />
+            </label>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button className="coffee-primary" disabled={busy}>Guardar cambios</button>
+              <button type="button" className="coffee-link" onClick={() => setEditingCategory(null)}>Cancelar</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── MODAL CONFIRMAR ELIMINACIÓN DE CATEGORÍA ── */}
+      {categoryToDelete && (
+        <div className="modal-backdrop">
+          <div className="confirmation-modal">
+            <small>ELIMINAR CATEGORÍA</small>
+            <h2>¿Eliminar categoría “{categoryToDelete.name}”?</h2>
+            {categoryToDelete.products.length > 0 ? (
+              <p style={{ color: 'var(--danger)' }}>
+                ⚠️ Esta categoría tiene <strong>{categoryToDelete.products.length} producto(s)</strong> activos. Debes reasignar o eliminar sus productos antes de poder borrar la categoría.
+              </p>
+            ) : (
+              <p>La categoría se eliminará del menú y ya no aparecerá en el punto de venta.</p>
+            )}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button type="button" className="coffee-link" disabled={busy} onClick={() => setCategoryToDelete(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="danger-button"
+                disabled={busy || categoryToDelete.products.length > 0}
+                onClick={() => handleDeleteCategory(categoryToDelete)}
+              >
+                {busy ? 'Eliminando…' : 'Aceptar y eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL ENTRADA RÁPIDA DE STOCK (REABASTECIMIENTO) ── */}
+      {quickRestockStock && (
+        <div className="modal-backdrop">
+          <form className="modifier-modal coffee-form" onSubmit={handleQuickRestock}>
+            <button type="button" className="modal-close" onClick={() => setQuickRestockStock(null)}>×</button>
+            <small>ENTRADA DE INVENTARIO / COMPRA</small>
+            <h2>📥 {quickRestockStock.ingredient.name}</h2>
+            <p>
+              Existencia actual: <strong>{Number(quickRestockStock.quantity).toLocaleString('es-MX')} {quickRestockStock.ingredient.unit}</strong>
+            </p>
+            <label>
+              Cantidad a ingresar ({quickRestockStock.ingredient.unit})
+              <input
+                type="number"
+                step="any"
+                min="0.0001"
+                placeholder={`Ej. 10 (${quickRestockStock.ingredient.unit})`}
+                value={quickRestockAmount}
+                onChange={(e) => setQuickRestockAmount(e.target.value)}
+                autoFocus
+                required
+              />
+            </label>
+            <label>
+              Costo unitario de esta compra ($ por {quickRestockStock.ingredient.unit})
+              <input
+                type="number"
+                step="any"
+                min="0"
+                placeholder={money(quickRestockStock.averageUnitCost || 0)}
+                value={quickRestockCost}
+                onChange={(e) => setQuickRestockCost(e.target.value)}
+                required
+              />
+              <small>El costo promedio ponderado se actualizará automáticamente según la cantidad adquirida.</small>
+            </label>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button className="coffee-primary" disabled={busy || !quickRestockAmount}>
+                {busy ? 'Guardando…' : 'Registrar entrada'}
+              </button>
+              <button type="button" className="coffee-link" onClick={() => setQuickRestockStock(null)}>
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {deletingProduct && <div className="modal-backdrop"><div className="confirmation-modal"><small>CONFIRMAR ELIMINACIÓN</small><h2>¿Quieres eliminar “{deletingProduct.name}”?</h2><p>El producto desaparecerá del menú y del punto de venta. Las ventas y tickets anteriores se conservarán.</p><div><button type="button" className="coffee-link" disabled={busy} onClick={() => setDeletingProduct(null)}>Cancelar</button><button type="button" className="danger-button" disabled={busy} onClick={confirmDeleteProduct}>{busy ? 'Eliminando…' : 'Aceptar y eliminar'}</button></div></div></div>}
 

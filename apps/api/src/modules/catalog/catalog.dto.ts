@@ -32,6 +32,37 @@ export class CreateCategoryDto {
   sortOrder?: number;
 }
 
+export class UpdateCategoryDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name?: string;
+
+  @IsOptional()
+  @IsHexColor()
+  color?: string;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class CategoryOrderItemDto {
+  @IsUUID()
+  id!: string;
+
+  @IsInt()
+  sortOrder!: number;
+}
+
+export class ReorderCategoriesDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CategoryOrderItemDto)
+  items!: CategoryOrderItemDto[];
+}
+
 export class RecipeIngredientDto {
   @IsUUID()
   ingredientId!: string;

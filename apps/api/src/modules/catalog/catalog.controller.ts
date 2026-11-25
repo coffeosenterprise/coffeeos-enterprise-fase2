@@ -15,6 +15,8 @@ import { CatalogService } from './catalog.service';
 import {
   CreateCategoryDto,
   CreateProductDto,
+  ReorderCategoriesDto,
+  UpdateCategoryDto,
   UpdateProductDto,
 } from './catalog.dto';
 
@@ -33,6 +35,27 @@ export class CatalogController {
   @RequirePermissions('catalog.manage')
   createCategory(@Body() dto: CreateCategoryDto) {
     return this.catalogService.createCategory(dto);
+  }
+
+  @Patch('categories/reorder')
+  @RequirePermissions('catalog.manage')
+  reorderCategories(@Body() dto: ReorderCategoriesDto) {
+    return this.catalogService.reorderCategories(dto);
+  }
+
+  @Patch('categories/:categoryId')
+  @RequirePermissions('catalog.manage')
+  updateCategory(
+    @Param('categoryId') categoryId: string,
+    @Body() dto: UpdateCategoryDto,
+  ) {
+    return this.catalogService.updateCategory(categoryId, dto);
+  }
+
+  @Delete('categories/:categoryId')
+  @RequirePermissions('catalog.manage')
+  removeCategory(@Param('categoryId') categoryId: string) {
+    return this.catalogService.removeCategory(categoryId);
   }
 
   @Post('products')

@@ -8,6 +8,8 @@ import { getTenantContext } from '../../common/tenant/tenant-context';
 import type {
   CreateCategoryDto,
   CreateProductDto,
+  ReorderCategoriesDto,
+  UpdateCategoryDto,
   UpdateProductDto,
 } from './catalog.dto';
 
@@ -120,6 +122,65 @@ export class CatalogService {
         },
       }),
     );
+  }
+
+  updateCategory(categoryId: string, dto: UpdateCategoryDto) {
+    return this.prisma.withTenantContext(async (tx) => {
+      const category = await tx.category.findFirst({
+        where: { id: categoryId, active: true },
+      });
+      if (!category) throw new NotFoundException('Categoría no encontrada');
+
+      return tx.category.update({
+        where: { id: category.id },
+        data: {
+          ...(dto.name ? { name: dto.name.trim() } : {}),
+          ...(dto.color ? { color: dto.color } : {}),
+          ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+        },
+      });
+    });
+  }
+
+  removeCategory(categoryId: string) {
+    return this.prisma.withTenantContext(async (tx) => {
+      const category = await tx.category.findFirst({
+        where: { id: categoryId, active: true },
+        include: {
+          products: { where: { active: true } },
+        },
+      });
+      if (!category) throw new NotFoundException('Categoría no encontrada');
+
+      if (category.products.length > 0) {
+        throw new BadRequestException(
+          `No se puede eliminar la categoría "${category.name}" porque tiene ${category.products.length} producto(s) activo(s). Reasigna o elimina los productos primero.`,
+        );
+      }
+
+      await tx.category.update({
+        where: { id: category.id },
+        data: { active: false },
+      });
+
+      return {
+        id: category.id,
+        name: category.name,
+        removed: true,
+      };
+    });
+  }
+
+  reorderCategories(dto: ReorderCategoriesDto) {
+    return this.prisma.withTenantContext(async (tx) => {
+      for (const item of dto.items) {
+        await tx.category.updateMany({
+          where: { id: item.id, active: true },
+          data: { sortOrder: item.sortOrder },
+        });
+      }
+      return { success: true };
+    });
   }
 
   createProduct(dto: CreateProductDto) {

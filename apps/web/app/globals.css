@@ -335,18 +335,43 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-2); box-sh
 .stock-btn-subrecipe { background: rgba(56, 189, 248, 0.16) !important; color: #38bdf8 !important; border: 1px solid rgba(56, 189, 248, 0.35) !important; }
 .stock-btn-prepare { background: rgba(251, 191, 36, 0.16) !important; color: #fbbf24 !important; border: 1px solid rgba(251, 191, 36, 0.35) !important; }
 
-.catalog-layout { display: grid; grid-template-columns: 260px 1fr; gap: 18px; align-items: start; }
-.side-forms { display: grid; gap: 16px; }
-.category-list { display: grid; gap: 10px; }
-.category-list > span { display: grid; grid-template-columns: 9px 1fr auto; align-items: center; gap: 9px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 12px; }
-.category-list i, .category-tabs i { width: 8px; height: 8px; display: inline-block; border-radius: 50%; }
-.category-list b { color: var(--muted); }
-.catalog-product-list { display: grid; gap: 8px; }
-.catalog-product-list > button { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--paper); text-align: left; }
-.catalog-product-list > button:hover { border-color: var(--green-2); background: var(--green-soft); }
-.catalog-product-list > button span { display: grid; gap: 3px; }
-.catalog-product-list > button small, .catalog-product-list > p { margin: 0; color: var(--muted); font-size: 9px; }
-.catalog-product-list > button b { color: var(--green); font-size: 10px; }
+.catalog-layout { display: grid; gap: 20px; }
+.catalog-top-panel { display: grid; gap: 16px; }
+.category-manager-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 12px; }
+.category-chip-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); }
+.category-chip-info { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.category-chip-info i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.category-chip-info span { color: var(--muted); font-size: 11px; font-weight: 400; }
+.category-chip-actions { display: flex; align-items: center; gap: 4px; }
+.category-chip-actions button { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 6px; background: var(--cream); color: var(--ink); display: grid; place-items: center; font-size: 12px; cursor: pointer; padding: 0; }
+.category-chip-actions button:hover:not(:disabled) { border-color: var(--green); color: var(--green); }
+.category-chip-actions button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.catalog-filter-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.catalog-search-box { flex: 1; min-width: 240px; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--input-bg, var(--paper)); }
+.catalog-search-box input { border: 0; outline: none; background: transparent; color: var(--ink); font-size: 13px; width: 100%; min-height: auto; padding: 0; }
+.catalog-category-pills { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
+.catalog-category-pills button { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.catalog-category-pills button.active { border-color: var(--green); background: var(--green-soft); color: var(--green); font-weight: 700; }
+
+.catalog-products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.catalog-product-card { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); color: var(--ink); display: flex; flex-direction: column; gap: 8px; position: relative; transition: all .15s ease; }
+.catalog-product-card:hover { border-color: var(--green-2); transform: translateY(-1px); }
+.catalog-product-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.catalog-product-card-head strong { font-size: 15px; font-weight: 700; color: var(--ink); }
+.catalog-product-card-head .price-badge { font: 700 16px 'Manrope', sans-serif; color: var(--green); }
+.catalog-product-category-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.catalog-product-category-tag i { width: 8px; height: 8px; border-radius: 50%; }
+.catalog-product-desc { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.45; }
+.catalog-product-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 10px; color: var(--muted); }
+.catalog-product-meta-pill { padding: 2px 7px; border-radius: 6px; background: var(--cream); border: 1px solid var(--line); }
+.catalog-product-card-actions { display: flex; gap: 8px; margin-top: 10px; }
+.catalog-product-card-actions button { flex: 1; padding: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--cream); color: var(--ink); font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
+.catalog-product-card-actions button.edit-btn:hover { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+.catalog-product-card-actions button.del-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+.inventory-ops-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.inventory-ops-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .product-builder fieldset, .modifier-modal fieldset { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 11px; }
 .product-builder legend, .modifier-modal legend { padding: 0 7px; color: var(--ink); font-size: 12px; font-weight: 700; }
 .builder-row { display: grid; grid-template-columns: 1fr 130px 34px; gap: 8px; }
